@@ -1,0 +1,35 @@
+{
+    "name": "DecoInnova Toolkit",
+    "short_name": "DecoToolkit",
+    "description": "Herramienta de planificación y diseño de interiores.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#0055b3",
+    "icons": [
+        {
+            "src": "/decoToolkit_app_icon.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/decoToolkit_app_icon.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/decoToolkit_app_icon.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/decoToolkit_app_icon.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}

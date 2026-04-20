@@ -1,0 +1,300 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User Profile",
+      "type": "object",
+      "description": "Represents a user's profile, including their permissions.",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "isAdmin": {
+            "type": "boolean",
+            "description": "Indicates if the user has administrator privileges."
+        },
+        "permissions": {
+          "type": "object",
+          "properties": {
+            "canManageUsers": {
+              "type": "boolean"
+            },
+            "canEditStandardMaterials": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "required": [
+        "email",
+        "permissions"
+      ]
+    },
+    "Project": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Project",
+      "type": "object",
+      "description": "Represents a design project within the DecoInnova Toolkit.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the project."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who created the project. (Relationship: User 1:N Project)"
+        },
+        "projectName": {
+          "type": "string",
+          "description": "The name of the project."
+        },
+        "materials": {
+          "type": "array",
+          "description": "An array of material identifiers used in the project. (Relationship: Project 1:N Material)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "surfaces": {
+          "type": "array",
+          "description": "An array of surface identifiers defined for the project. (Relationship: Project 1:N Surface)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "remnants": {
+          "type": "array",
+          "description": "An array of remnant identifiers available for the project. (Relationship: Project 1:N Remnant)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "materialUsageCount": {
+          "type": "number",
+          "description": "The number of materials used in the project."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The date and time when the project was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "The date and time when the project was last updated.",
+          "format": "date-time"
+        },
+        "measurements": {
+          "type": "array",
+          "description": "An array of measurement identifiers recorded for the project. (Relationship: Project 1:N Measurement)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "projectName",
+        "materials",
+        "surfaces",
+        "remnants",
+        "materialUsageCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Material": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Material",
+      "type": "object",
+      "description": "Represents a material definition used in a project.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the material."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the material."
+        },
+        "cost": {
+          "type": "number",
+          "description": "The cost of the material."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement for the material (e.g., square feet, meters)."
+        },
+        "properties": {
+          "type": "string",
+          "description": "Custom material properties (e.g., color, texture)."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "cost",
+        "unit"
+      ]
+    },
+    "Surface": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Surface",
+      "type": "object",
+      "description": "Represents a surface definition in a project.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the surface."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the surface."
+        },
+        "width": {
+          "type": "number",
+          "description": "The width of the surface."
+        },
+        "height": {
+          "type": "number",
+          "description": "The height of the surface."
+        },
+        "shape": {
+          "type": "string",
+          "description": "The shape of the surface (e.g., rectangle, circle)."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "width",
+        "height",
+        "shape"
+      ]
+    },
+    "Remnant": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Remnant",
+      "type": "object",
+      "description": "Represents a remnant piece of material.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the remnant."
+        },
+        "materialId": {
+          "type": "string",
+          "description": "Reference to the Material this remnant came from. (Relationship: Material 1:N Remnant)"
+        },
+        "width": {
+          "type": "number",
+          "description": "The width of the remnant."
+        },
+        "height": {
+          "type": "number",
+          "description": "The height of the remnant."
+        },
+        "isUsable": {
+          "type": "boolean",
+          "description": "Indicates whether the remnant is usable."
+        }
+      },
+      "required": [
+        "id",
+        "materialId",
+        "width",
+        "height",
+        "isUsable"
+      ]
+    },
+    "Measurement": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Measurement",
+      "type": "object",
+      "description": "Represents a measurement taken within the editor.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the measurement."
+        },
+        "x1": {
+          "type": "number",
+          "description": "The x coordinate of the start point."
+        },
+        "y1": {
+          "type": "number",
+          "description": "The y coordinate of the start point."
+        },
+        "x2": {
+          "type": "number",
+          "description": "The x coordinate of the end point."
+        },
+        "y2": {
+          "type": "number",
+          "description": "The y coordinate of the end point."
+        },
+        "width": {
+          "type": "number",
+          "description": "The width of the measurement."
+        },
+        "height": {
+          "type": "number",
+          "description": "The height of the measurement."
+        }
+      },
+      "required": [
+        "id",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "width",
+        "height"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password"
+    ],
+    "adminUser": "stevensb.2003@gmail.com",
+    "customClaims": {
+      "admin": {
+        "type": "boolean"
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores user profile data, including role-based permissions."
+    },
+    "/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/Project"
+      },
+      "description": "Stores project data. Access is granted to the project owner (userId) or an administrator."
+    },
+    "/defaultMaterials/{materialId}": {
+      "schema": {
+        "$ref": "#/entities/Material"
+      },
+      "description": "Stores standard material definitions available to all users."
+    },
+    "/projects/{projectId}/{document=**}": {
+      "schema": {
+        "$ref": "#/entities/Surface"
+      },
+      "description": "Allows read/write access to project sub-collections (surfaces, obstacles, pieces) if the user is the project owner OR an administrator. The admin check is performed by getting the user's profile and checking the `isAdmin` field."
+    }
+  }
+}
+
+    

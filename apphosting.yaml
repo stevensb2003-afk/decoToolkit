@@ -1,0 +1,28 @@
+# Settings to manage and configure a Firebase App Hosting backend.
+# https://firebase.google.com/docs/app-hosting/configure
+
+kind: 'framework'
+schemaVersion: 'v1'
+
+# Grant your backend access to other Google Cloud services.
+serviceAccount: managed
+
+buildConfig:
+  # Next.js requires Node.js 18 or higher. Node.js 20 is recommended.
+  runtime: 'nodejs20'
+
+runConfig:
+  # Increase this value if you'd like to automatically spin up
+  # more instances in response to increased traffic.
+  maxInstances: 1
+  # Memory allocated for each instance.
+  memory: 512Mi
+
+env:
+  # Variables de entorno públicas o no sensibles pueden ir aquí.
+  # Las llaves de Tilopay y Alegra es MEJOR ponerlas en la consola de Firebase 
+  # o vía Secret Manager para no subirlas a GitHub.
+  - variable: NEXT_PUBLIC_PROJECT_NAME
+    value: "DecoToolkit"
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://decotoolkit.decoinnovacr.com"
