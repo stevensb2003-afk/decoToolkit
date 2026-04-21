@@ -11,7 +11,7 @@ import { Loader } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { CashSummaryWidget } from "@/components/cash-control/summary-widget";
-import { Wallet, Package, ShieldCheck, Tag, TrendingUp, Network, CreditCard } from "lucide-react";
+import { Wallet, Package, ShieldCheck, Tag, TrendingUp, Network, CreditCard, Users } from "lucide-react";
 import { useFirestore, useDoc } from "@/firebase";
 import { UserProfile } from "@/lib/types";
 import { doc } from "firebase/firestore";
@@ -105,10 +105,10 @@ export default function WelcomePage() {
             )}
             {(isAdmin || allowedModules.includes('inventory')) && (
               <ToolCard
-                href="/materials"
-                icon={<Package className="h-7 w-7 md:h-10 md:w-10 text-purple-500" />}
-                title="Materiales"
-                description="Administra el catálogo y sus dimensiones."
+                href="/crm"
+                icon={<Users className="h-7 w-7 md:h-10 md:w-10 text-orange-500" />}
+                title="CRM"
+                description="Gestión de clientes y seguimiento de prospectos."
               />
             )}
             {(isAdmin || allowedModules.includes('caja')) && (

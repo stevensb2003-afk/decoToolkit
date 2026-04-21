@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useUser, useFirestore, useMemoFirebase, useCollection, useDoc } from "@/firebase";
 import { UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { doc } from "firebase/firestore";
 import type { DefaultMaterial, Unit } from "@/lib/types";
 import {
@@ -42,7 +43,7 @@ import {
 } from "@/components/ui/select";
 import { convertFromCm } from "@/lib/utils";
 import { createDefaultMaterial, updateDefaultMaterial, deleteDefaultMaterial } from "@/lib/actions";
-import { Pencil, Trash2, Terminal, Ruler, PackagePlus, Maximize, Layers, Search } from "lucide-react";
+import { Pencil, Trash2, Terminal, Ruler, PackagePlus, Maximize, Layers, Search, ArrowLeft } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -185,14 +186,19 @@ export default function DefaultMaterialsPage() {
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3 mb-8"
+            className="flex items-center gap-3 md:gap-4 mb-8"
           >
-            <div className="p-3 bg-primary/10 rounded-xl">
+            <Button asChild variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full border border-border/50 bg-background/50 backdrop-blur-sm shadow-sm hover:bg-muted">
+              <Link href="/projects">
+                <ArrowLeft className="h-5 w-5 text-foreground/80" />
+              </Link>
+            </Button>
+            <div className="p-3 bg-primary/10 rounded-xl hidden sm:flex">
               <Layers className="h-6 w-6 text-primary" />
             </div>
             <div>
               <h1 className="text-3xl md:text-4xl font-bold font-headline tracking-tight text-foreground">Materiales Estándar</h1>
-              <p className="text-muted-foreground mt-1">Gestiona las plantillas base para tus cálculos de inventario y cotizaciones.</p>
+              <p className="text-muted-foreground mt-1 text-sm md:text-base">Gestiona las plantillas base para tus cálculos de inventario y cotizaciones.</p>
             </div>
           </motion.div>
 

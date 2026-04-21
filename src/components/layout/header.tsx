@@ -31,6 +31,7 @@ import {
   Network,
   CreditCard,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth, useUser, useFirestore, useDoc } from "@/firebase";
@@ -45,7 +46,7 @@ const mainNavItems = [
 
 const toolNavItems = [
   { id: "projects", href: "/projects", label: "Mis Proyectos", icon: FolderKanban },
-  { id: "inventory", href: "/materials", label: "Materiales Estándar", icon: Shapes },
+  { id: "inventory", href: "/crm", label: "CRM", icon: Users },
   { id: "calculator", href: "/calculator", label: "Calculadora", icon: Calculator },
   { id: "admin", href: "/admin", label: "Admin", icon: ShieldCheck },
   { id: "caja", href: "/caja", label: "Control de Caja", icon: Wallet },
