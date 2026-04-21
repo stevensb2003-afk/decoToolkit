@@ -1,8 +1,35 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper: check if the requesting user is an admin
+    function isAdmin() {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Default: authenticated users can read everything
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Processes: anyone authenticated can read, only admins can write
+    match /processes/{processId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isAdmin();
+
+      // Versions subcollection: read for all authenticated, write only admins
+      match /versions/{versionId} {
+        allow read: if request.auth != null;
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    // Process categories: anyone authenticated can read, only admins can write
+    match /processCategories/{categoryId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isAdmin();
     }
   }
 }

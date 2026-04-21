@@ -132,9 +132,9 @@ export function ManageUserDialog({ user, canBeManaged }: { user: UserProfile, ca
       <DialogTrigger asChild>
         <Button variant="outline">Gestionar</Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Gestionar Usuario</DialogTitle>
+      <DialogContent className="w-[95vw] sm:max-w-xl max-h-[95vh] flex flex-col p-4 sm:p-6 rounded-2xl gap-0 overflow-hidden">
+        <DialogHeader className="pb-4 flex-shrink-0">
+          <DialogTitle className="text-xl">Gestionar Usuario</DialogTitle>
           <DialogDescription>
             Editando el perfil de <span className="font-semibold">{user.displayName}</span>.
           </DialogDescription>
@@ -143,10 +143,10 @@ export function ManageUserDialog({ user, canBeManaged }: { user: UserProfile, ca
           <form
             id="profile-form"
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4 py-2"
+            className="flex-1 overflow-hidden flex flex-col"
           >
-            <ScrollArea className="max-h-[60vh] -mr-4 pr-4">
-              <div className="space-y-4 py-2">
+            <ScrollArea className="flex-1 px-1 sm:px-2 -mx-1 sm:-mx-2 h-[60vh] sm:h-auto">
+              <div className="space-y-5 py-2 pb-6">
                 <FormField
                   control={form.control}
                   name="displayName"
@@ -262,59 +262,61 @@ export function ManageUserDialog({ user, canBeManaged }: { user: UserProfile, ca
             </ScrollArea>
           </form>
         </Form>
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          {canBeManaged && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button type="button" variant="destructive" className="sm:mr-auto" disabled={isSubmitting || isDeleting}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Eliminar Usuario
+        <div className="pt-4 border-t border-slate-100 mt-auto flex-shrink-0">
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {canBeManaged && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button type="button" variant="destructive" className="sm:mr-auto w-full sm:w-auto" disabled={isSubmitting || isDeleting}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar Usuario
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="w-[95vw] rounded-2xl">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                      <TriangleAlert className="h-5 w-5 text-destructive" />
+                      ¿Estás absolutamente seguro?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta acción no se puede deshacer. Esto eliminará permanentemente la cuenta de <strong>{user.displayName}</strong> de Firebase Authentication y su perfil de la base de datos.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+                    <AlertDialogCancel className="w-full sm:w-auto" disabled={isDeleting}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDelete();
+                      }}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full sm:w-auto"
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? <Loader className="animate-spin mr-2 h-4 w-4" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                      Confirmar Eliminación
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" className="flex-1 sm:flex-none" disabled={isSubmitting || isDeleting}>
+                  Cancelar
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <TriangleAlert className="h-5 w-5 text-destructive" />
-                    ¿Estás absolutamente seguro?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Esta acción no se puede deshacer. Esto eliminará permanentemente la cuenta de <strong>{user.displayName}</strong> de Firebase Authentication y su perfil de la base de datos.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleDelete();
-                    }}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    disabled={isDeleting}
-                  >
-                    {isDeleting ? <Loader className="animate-spin mr-2 h-4 w-4" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                    Confirmar Eliminación
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          <div className="flex gap-2 w-full sm:w-auto">
-            <DialogClose asChild>
-              <Button type="button" variant="secondary" className="flex-1 sm:flex-none" disabled={isSubmitting || isDeleting}>
-                Cancelar
+              </DialogClose>
+              <Button
+                type="submit"
+                form="profile-form"
+                className="flex-1 sm:flex-none"
+                disabled={!canBeManaged || isSubmitting || isDeleting}
+              >
+                {isSubmitting && <Loader className="animate-spin mr-2" />}
+                Guardar Cambios
               </Button>
-            </DialogClose>
-            <Button
-              type="submit"
-              form="profile-form"
-              className="flex-1 sm:flex-none"
-              disabled={!canBeManaged || isSubmitting || isDeleting}
-            >
-              {isSubmitting && <Loader className="animate-spin mr-2" />}
-              Guardar Cambios
-            </Button>
-          </div>
-        </DialogFooter>
+            </div>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

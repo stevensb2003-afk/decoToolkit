@@ -3,119 +3,190 @@
 import { useState, useCallback, useMemo, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
-import { useUser, useDoc, useFirestore } from "@/firebase";
+import { useUser, useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import { doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowLeft, Network, Edit2 } from "lucide-react";
+import { Loader2, ArrowLeft, Network, Edit2, ExternalLink, User, Briefcase } from "lucide-react";
 import Link from "next/link";
 import { ProcessMap, UserProfile } from "@/lib/types";
-import {
-    ReactFlow,
-    Controls,
-    Background,
-    Panel,
-    useNodesState,
-    useEdgesState,
-    Node,
-    Edge,
-    Handle,
-    Position,
-    BackgroundVariant
-} from '@xyflow/react';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
-import '@xyflow/react/dist/style.css';
+import { ReactFlowProvider, useNodesState, useEdgesState, Node, Edge } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { buildNodeTypes } from "@/components/procesos/premium-node";
+import { FlowCanvas } from "@/components/procesos/flow-canvas";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
-const nodeTypes = {
-    premium: ({ data }: {
-        data: {
-            label: string;
-            description?: string;
-            linkUrl?: string;
-            color?: string;
-            responsibleName?: string;
-            role?: string;
-            platform?: string;
-            isBoldTitle?: boolean;
+function ProcessViewerInner({ processData, id, isAdmin }: {
+    processData: ProcessMap; id: string; isAdmin: boolean;
+}) {
+    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const onViewDetails = useCallback((nodeId: string) => {
+        setSelectedNodeId(nodeId);
+        setSheetOpen(true);
+    }, []);
+
+    const nodeTypes = useMemo(() => buildNodeTypes("view", undefined, onViewDetails), [onViewDetails]);
+
+    const [nodes, setNodes] = useNodesState(
+        (processData.nodes || []).map(n => ({ ...(n as any), type: "premium" }))
+    );
+    const [edges, setEdges] = useEdgesState(
+        (processData.edges || []).map(e => ({
+            ...(e as any),
+            type: "smoothstep",
+            style: { stroke: "#cbd5e1", strokeWidth: 2 },
+            markerEnd: { type: "arrowclosed", color: "#cbd5e1", width: 16, height: 16 },
+        }))
+    );
+
+    useEffect(() => {
+        if (processData) {
+            setNodes((processData.nodes as Node[]).map(n => ({ ...(n as any), type: "premium" })));
+            setEdges((processData.edges as Edge[]).map(e => ({
+                ...(e as any),
+                type: "smoothstep",
+                style: { stroke: "#cbd5e1", strokeWidth: 2 },
+                markerEnd: { type: "arrowclosed", color: "#cbd5e1", width: 16, height: 16 },
+            })));
         }
-    }) => (
-        <TooltipProvider delayDuration={100}>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <div className="relative group">
-                        {/* Accent bar */}
-                        <div
-                            className="absolute -left-1 top-0 bottom-0 w-1.5 rounded-l-md z-10"
-                            style={{ backgroundColor: data.color || 'var(--primary)' }}
-                        />
-                        <div className="px-5 py-3 shadow-xl rounded-md bg-white/95 backdrop-blur-sm border border-slate-200/50 min-w-[200px] text-center hover:border-primary/50 hover:shadow-2xl transition-all duration-300 cursor-help overflow-hidden">
-                            {/* 4 Visual points, each acting as both Source and Target */}
-                            {/* Top */}
-                            <Handle type="target" position={Position.Top} id="t" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors" />
-                            <Handle type="source" position={Position.Top} id="t-s" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors !opacity-0" />
+    }, [processData, setNodes, setEdges]);
 
-                            {/* Left */}
-                            <Handle type="target" position={Position.Left} id="l" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors" />
-                            <Handle type="source" position={Position.Left} id="l-s" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors !opacity-0" />
+    const displayEdges = useMemo(() => edges.map(e => ({
+        ...e,
+        animated: false,
+        style: e.source === selectedNodeId
+            ? { stroke: "hsl(var(--primary))", strokeWidth: 2.5 }
+            : { stroke: "#cbd5e1", strokeWidth: 2 },
+        markerEnd: {
+            type: "arrowclosed",
+            color: e.source === selectedNodeId ? "hsl(var(--primary))" : "#cbd5e1",
+            width: 16, height: 16,
+        },
+    })), [edges, selectedNodeId]);
 
-                            {/* Platform Tag */}
-                            {data.platform && (
-                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mb-1">
-                                    {data.platform}
-                                </div>
-                            )}
+    const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+        setSelectedNodeId(node.id);
+    }, []);
 
-                            <div className={`${data.isBoldTitle ? 'font-bold' : 'font-semibold'} text-sm text-slate-800 tracking-tight`}>
-                                {data.label}
-                            </div>
+    const onSelectionChange = useCallback(({ nodes: sel }: { nodes: Node[] }) => {
+        if (sel.length === 0) {
+            setSelectedNodeId(null);
+            setSheetOpen(false);
+        }
+    }, []);
 
-                            {/* Responsible/Role Info */}
-                            {(data.responsibleName || data.role) && (
-                                <div className="mt-2 pt-1.5 border-t border-slate-100 flex flex-col items-center">
-                                    <div className="text-[10px] text-slate-500 font-medium leading-none">
-                                        {data.role || 'Responsable'}
-                                    </div>
-                                    <div className="text-[10px] text-slate-700 font-bold mt-0.5">
-                                        {data.responsibleName || 'Pendiente'}
-                                    </div>
-                                </div>
-                            )}
+    const onPaneClick = useCallback(() => {
+        setSelectedNodeId(null);
+        setSheetOpen(false);
+        setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+        setEdges(eds => eds.map(e => ({ ...e, selected: false })));
+    }, [setNodes, setEdges]);
 
-                            {data.linkUrl && (
-                                <div className="text-[10px] text-primary font-medium hover:underline mt-2 flex items-center justify-center gap-1 opacity-80 group-hover:opacity-100 italic">
-                                    Enlace externo
-                                </div>
-                            )}
+    const selectedNode = nodes.find(n => n.id === selectedNodeId);
+    const data = selectedNode?.data as any;
 
-                            {/* Right */}
-                            <Handle type="source" position={Position.Right} id="r" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors" />
-                            <Handle type="target" position={Position.Right} id="r-t" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors !opacity-0" />
+    return (
+        <div className="flex flex-col flex-1 overflow-hidden relative">
+            <div className="px-4 py-3 border-b bg-white/90 backdrop-blur-sm flex items-center justify-between z-10 shrink-0 shadow-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                    <Button variant="ghost" size="icon" asChild className="shrink-0">
+                        <Link href="/procesos"><ArrowLeft className="w-5 h-5" /></Link>
+                    </Button>
+                    <div className="min-w-0">
+                        <h1 className="text-base font-bold flex items-center gap-2 truncate">
+                            <Network className="w-4 h-4 text-primary shrink-0" />
+                            {processData.title}
+                        </h1>
+                        <p className="text-xs text-muted-foreground truncate">{processData.description}</p>
+                    </div>
+                </div>
+                {isAdmin && (
+                    <Button asChild variant="outline" size="sm" className="gap-2 shrink-0 ml-2">
+                        <Link href={`/procesos/admin/${id}`}>
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Editar</span>
+                        </Link>
+                    </Button>
+                )}
+            </div>
 
-                            {/* Bottom */}
-                            <Handle type="source" position={Position.Bottom} id="b" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors" />
-                            <Handle type="target" position={Position.Bottom} id="b-t" className="!w-2 !h-2 !bg-slate-300 group-hover:!bg-primary !transition-colors !opacity-0" />
+            <div className="flex-1 flex overflow-hidden">
+                <FlowCanvas 
+                    mode="view" 
+                    nodes={nodes} 
+                    edges={displayEdges} 
+                    nodeTypes={nodeTypes} 
+                    onSelectionChange={onSelectionChange}
+                    onNodeClick={onNodeClick}
+                    onPaneClick={onPaneClick}
+                />
+                {/* Subtle tap hint — bottom center, non-intrusive */}
+                {!sheetOpen && (
+                    <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                        <div className="bg-slate-800/70 backdrop-blur-md text-white text-[10px] font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                            Toca un bloque para ver detalles
                         </div>
                     </div>
-                </TooltipTrigger>
-                {data.description && (
-                    <TooltipContent side="top" className="max-w-[320px] p-4 text-sm bg-slate-900 text-white rounded-xl shadow-2xl border-none">
-                        <div className="space-y-2">
-                            <p className="font-bold text-[10px] text-primary uppercase tracking-[0.1em] border-b border-white/10 pb-1">Detalles del paso</p>
-                            <div
-                                className="leading-relaxed text-slate-100 rich-text-content text-xs"
-                                dangerouslySetInnerHTML={{ __html: data.description }}
-                            />
-                        </div>
-                    </TooltipContent>
                 )}
-            </Tooltip>
-        </TooltipProvider>
-    )
-};
+            </div>
+
+            <Sheet open={sheetOpen} onOpenChange={(open) => {
+                setSheetOpen(open);
+                if (!open) {
+                    setSelectedNodeId(null);
+                    setNodes(nds => nds.map(n => ({ ...n, selected: false })));
+                    setEdges(eds => eds.map(e => ({ ...e, selected: false })));
+                }
+            }}>
+                <SheetContent side="right" className="w-full sm:max-w-lg xl:max-w-2xl flex flex-col p-0">
+                    {selectedNode && data ? (
+                        <>
+                            <div className="h-1.5 w-full" style={{ backgroundColor: data.color ?? "hsl(var(--primary))" }} />
+                            <SheetHeader className="px-5 pt-4 pb-3 border-b">
+                                <SheetTitle className="text-base font-bold text-slate-800">{data.label}</SheetTitle>
+                                {data.platform && data.platform !== "Ninguna" && (
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{data.platform}</span>
+                                )}
+                            </SheetHeader>
+                            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                                {(data.responsibleName || data.role) && (
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                            <User className="w-3.5 h-3.5 text-primary" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">{data.role || "Responsable"}</p>
+                                            <p className="text-sm font-semibold text-slate-800">{data.responsibleName || "Pendiente"}</p>
+                                        </div>
+                                    </div>
+                                )}
+                                {data.description && (
+                                    <div>
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
+                                            <Briefcase className="w-3 h-3" /> Descripción
+                                        </p>
+                                        <div className="rich-text-content text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: data.description }} />
+                                    </div>
+                                )}
+                                {data.linkUrl && (
+                                    <a href={data.linkUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary font-medium hover:underline border border-primary/20 bg-primary/5 rounded-lg px-3 py-2">
+                                        <ExternalLink className="w-4 h-4 shrink-0" />
+                                        Abrir enlace externo
+                                    </a>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground text-sm p-6 text-center">
+                            Selecciona un paso en el mapa para ver sus detalles.
+                        </div>
+                    )}
+                </SheetContent>
+            </Sheet>
+        </div>
+    );
+}
 
 export default function ProcessViewerPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -123,147 +194,38 @@ export default function ProcessViewerPage({ params }: { params: Promise<{ id: st
     const router = useRouter();
     const firestore = useFirestore();
 
-    const profileRef = useMemo(() => user ? doc(firestore, 'users', user.uid) : null, [firestore, user]);
+    const profileRef = useMemoFirebase(() => user ? doc(firestore, "users", user.uid) : null, [firestore, user]);
     const { data: profile } = useDoc<UserProfile>(profileRef);
-
-    const processRef = useMemo(() => doc(firestore, 'processes', id), [firestore, id]);
+    const processRef = useMemoFirebase(() => doc(firestore, "processes", id), [firestore, id]);
     const { data: processData, isLoading } = useDoc<ProcessMap>(processRef);
 
-    const initialNodes: Node[] = (processData?.nodes || []).map(n => ({ ...n, type: 'premium' }));
-    const initialEdges: Edge[] = processData?.edges || [];
+    if (isUserLoading || isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    if (!user) { router.push("/login"); return null; }
+    if (!processData) return (
+        <div className="flex flex-col h-screen items-center justify-center gap-4">
+            <p className="text-muted-foreground">Proceso no encontrado.</p>
+            <Button asChild><Link href="/procesos">Volver</Link></Button>
+        </div>
+    );
 
-    const [nodes, setNodes] = useNodesState(initialNodes);
-    const [edges, setEdges] = useEdgesState(initialEdges);
-    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const isAdmin = profile?.isAdmin ?? false;
 
-    const onSelectionChange = useCallback(({ nodes }: { nodes: Node[] }) => {
-        if (nodes.length > 0) {
-            setSelectedNodeId(nodes[0].id);
-        } else {
-            setSelectedNodeId(null);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (processData) {
-            setNodes((processData.nodes as Node[]).map(n => ({ ...n, type: 'premium' })));
-            setEdges((processData.edges as Edge[]).map(e => ({
-                ...e,
-                type: 'smoothstep',
-                animated: false,
-                style: { 
-                    stroke: '#94a3b8', 
-                    strokeWidth: 2, 
-                    strokeDasharray: '5, 5', // Always dashed
-                    transition: 'stroke 0.3s, stroke-width 0.3s' 
-                }
-            })));
-        }
-    }, [processData, setNodes, setEdges]);
-
-    const displayEdges = useMemo(() => {
-        return edges.map(edge => ({
-            ...edge,
-            animated: edge.source === selectedNodeId,
-            style: undefined, // Let CSS handle everything for stability
-        }));
-    }, [edges, selectedNodeId]);
-
-
-    if (isUserLoading || isLoading) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin" />
+    if (!processData.isPublished && !isAdmin) return (
+        <div className="flex flex-col h-screen items-center justify-center gap-4 bg-background px-4">
+            <div className="max-w-md w-full text-center border p-6 rounded-xl shadow bg-destructive/10">
+                <h2 className="text-xl font-bold text-destructive mb-2">Proceso No Publicado</h2>
+                <p className="text-muted-foreground text-sm">Este proceso aún no está disponible para el público.</p>
+                <Link href="/procesos" className="mt-4 inline-block text-primary hover:underline text-sm">← Volver al Directorio</Link>
             </div>
-        );
-    }
-
-    if (!user || !processData) {
-        if (!isLoading && !processData) {
-            return (
-                <div className="flex flex-col h-screen items-center justify-center gap-4">
-                    <p>Proceso no encontrado o no disponible.</p>
-                    <Button asChild>
-                        <Link href="/procesos">Volver</Link>
-                    </Button>
-                </div>
-            );
-        }
-        return null;
-    }
-
-    const isAdmin = profile?.isAdmin || profile?.permissions?.allowedModules?.includes('admin');
-    if (!processData.isPublished && !isAdmin) {
-        return (
-            <div className="flex flex-col h-screen items-center justify-center gap-4 bg-background">
-                <div className="max-w-md text-center border p-6 rounded shadow bg-destructive/10">
-                    <h2 className="text-xl font-bold text-destructive mb-2">Acceso Denegado</h2>
-                    <p>Este proceso aún no ha sido publicado. Si eres administrador, usa el Panel de Administración para publicarlo.</p>
-                    <div className="mt-4">
-                        <Link href="/procesos" className="text-primary hover:underline">Volver al Directorio</Link>
-                    </div>
-                </div>
-            </div>
-        );
-    }
+        </div>
+    );
 
     return (
         <div className="flex flex-col h-screen">
             <Header />
-            <div className="flex flex-col flex-1 overflow-hidden relative">
-                <div className="p-4 border-b bg-card flex items-center justify-between z-10 shrink-0 shadow-sm">
-                    <div className="flex items-center gap-4">
-                        <Button variant="ghost" size="icon" asChild>
-                            <Link href="/procesos">
-                                <ArrowLeft className="w-5 h-5" />
-                            </Link>
-                        </Button>
-                        <div>
-                            <h1 className="text-xl font-bold flex items-center gap-2">
-                                <Network className="w-5 h-5 text-primary" />
-                                {processData.title}
-                            </h1>
-                            <p className="text-sm text-muted-foreground">{processData.description}</p>
-                        </div>
-                    </div>
-
-                    {isAdmin && (
-                        <Button asChild variant="outline" size="sm" className="gap-2">
-                            <Link href={`/procesos/admin/${id}`}>
-                                <Edit2 className="w-4 h-4" />
-                                Editar Proceso
-                            </Link>
-                        </Button>
-                    )}
-                </div>
-
-                <div className="flex-1 w-full bg-[#f8fafc] relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px] opacity-40" />
-                    <ReactFlow
-                        nodes={nodes}
-                        edges={displayEdges}
-                        nodeTypes={nodeTypes}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                        elementsSelectable={true}
-                        onSelectionChange={onSelectionChange}
-                        fitView
-                        attributionPosition="bottom-right"
-                        minZoom={0.1}
-                        maxZoom={2}
-                    >
-                        <Background variant={BackgroundVariant.Dots} color="#cbd5e1" gap={20} />
-                        <Controls className="bg-white/80 backdrop-blur-md border-slate-200 shadow-xl rounded-lg" />
-                        <Panel position="top-right" className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-xl text-[11px] border border-slate-200/50 text-slate-600 font-medium max-w-[200px]">
-                            <div className="flex items-center gap-2 mb-1">
-                                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                                <span className="text-slate-900 font-bold uppercase tracking-wider">Modo Lectura</span>
-                            </div>
-                            Mueve el ratón para desplazar y usa la rueda para hacer zoom.
-                        </Panel>
-                    </ReactFlow>
-                </div>
-            </div>
+            <ReactFlowProvider>
+                <ProcessViewerInner processData={processData} id={id} isAdmin={isAdmin} />
+            </ReactFlowProvider>
         </div>
     );
 }

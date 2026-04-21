@@ -255,8 +255,12 @@ export interface ProcessEdge {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
   label?: string;
   animated?: boolean;
+  type?: string;
+  style?: Record<string, any>;
 }
 
 export interface ProcessMap {
@@ -264,10 +268,35 @@ export interface ProcessMap {
   title: string;
   description: string;
   thumbnailUrl?: string;
+  category?: string;           // ID of processCategories doc
+  tags?: string[];             // Array of tags
   nodes: ProcessNode[];
   edges: ProcessEdge[];
+  nodeCount?: number;          // Denormalized for listing performance
+  version: number;             // Incremented on each save
   createdAt: Timestamp | Date;
   updatedAt: Timestamp | Date;
   createdBy: string;
   isPublished: boolean;
+}
+
+export interface ProcessVersion {
+  id: string;
+  versionNumber: number;
+  savedAt: Timestamp | Date;   // Effective date
+  savedBy: string;             // UID
+  savedByName: string;         // Display name
+  nodes: ProcessNode[];
+  edges: ProcessEdge[];
+  changeNote?: string;
+}
+
+export interface ProcessCategory {
+  id: string;
+  name: string;
+  color: string;               // Hex color for badge
+  icon?: string;               // Lucide icon name (optional)
+  order: number;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
 }

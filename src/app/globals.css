@@ -97,17 +97,18 @@
   .rich-text-content ul, .rich-text-content ol {
     margin-top: 0.5rem;
     margin-bottom: 0.5rem;
-    padding-left: 0.5rem; /* Ajustado para inside */
+    padding-left: 1.5rem;
   }
   .rich-text-content ul {
-    list-style: disc inside !important;
+    list-style-type: disc;
+    list-style-position: outside;
   }
   .rich-text-content ol {
-    list-style: decimal inside !important;
+    list-style-type: decimal;
+    list-style-position: outside;
   }
   .rich-text-content li {
     margin-bottom: 0.25rem;
-    display: list-item !important; /* Asegurar que se comporte como item de lista */
   }
   .rich-text-content strong, .rich-text-content b {
     font-weight: 700;
