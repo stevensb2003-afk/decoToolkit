@@ -20,6 +20,11 @@ import { useIsDesktop } from './_hooks/useIsDesktop';
 import { calculatePlacementFragments, calculateOffcuts } from './_utils/clipper-geometry';
 
 // ── Components ─────────────────────────────────────────────────────────────
+import { useProjectHydration } from './_hooks/useProjectHydration';
+import { useProjectMutations } from './_hooks/useProjectMutations';
+import { useKeyboardShortcuts } from './_hooks/useKeyboardShortcuts';
+import { EditorSidebar } from './_components/EditorSidebar';
+
 import { MobileProjectView } from './_components/MobileProjectView';
 import { Canvas } from './_components/Canvas/Canvas';
 import { CortesPanel } from './_components/CortesPanel';
@@ -309,374 +314,24 @@ export default function EditorPage() {
   const viewportRef = useRef<HTMLDivElement>(null);
 
   // ── Auth redirect ────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!authLoading && !checkingAuth && !user) router.replace('/login');
-  }, [authLoading, checkingAuth, user, router]);
+  const {
+    activeSurface, activeSurfacePieces, activeSurfaceObstacles,
+    areaToCover, coveredArea, projectAreaToCover, projectCoveredArea,
+    wasteArea, materialUsage, groupedRemnantsByMaterial
+  } = useProjectHydration(project, surfaces, placedPieces, obstacles, es, authLoading, checkingAuth, user);
 
-  // ── Auto-select first surface ────────────────────────────────────────────
-  useEffect(() => {
-    if (surfaces?.length && !es.activeSurfaceId) es.setActiveSurfaceId(surfaces[0].id);
-  }, [surfaces, es.activeSurfaceId]);
-
-  // ── Keyboard Shortcuts ───────────────────────────────────────────────────
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input or textarea
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        if (e.shiftKey) {
-          e.preventDefault();
-          if (historyIndex < history.length - 1 && !isUndoingOrRedoing) redo();
-        } else {
-          e.preventDefault();
-          if (historyIndex >= 0 && !isUndoingOrRedoing) undo();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        if (historyIndex < history.length - 1 && !isUndoingOrRedoing) redo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
-        e.preventDefault();
-        es.setIsHandMode(!es.isHandMode);
-        if (!es.isHandMode) {
-          es.setIsEraserMode(false);
-          es.setIsMeasureMode(false);
-          es.setActiveBrush(null);
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
-        e.preventDefault();
-        es.handleToolSelect('eraser');
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-        e.preventDefault();
-        es.handleToolSelect('brush');
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') {
-        e.preventDefault();
-        es.handleToolSelect('measure');
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-        e.preventDefault();
-        setIsPivotSelectorOpen(prev => !prev);
-      } else if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
-        e.preventDefault();
-        es.setViewZoom(1);
-        if (es.setViewPan) es.setViewPan({ x: 0, y: 0 });
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyIndex, history.length, isUndoingOrRedoing, undo, redo, es]);
-
-  // ── Derived ──────────────────────────────────────────────────────────────
-  const activeSurface = useMemo(
-    () => surfaces?.find(s => s.id === es.activeSurfaceId) ?? null,
-    [surfaces, es.activeSurfaceId]
-  );
-  const activeSurfacePieces = useMemo(
-    () => placedPieces?.filter(p => p.surfaceId === activeSurface?.id) ?? [],
-    [placedPieces, activeSurface]
-  );
-  const activeSurfaceObstacles = useMemo(
-    () => obstacles?.filter(o => o.surfaceId === activeSurface?.id) ?? [],
-    [obstacles, activeSurface]
+  const {
+    handlePiecePlacement, handlePieceDelete, handleBatchDeletePieces,
+    handleClearAll, handleRotateMaterial, handleFinishDrawingObstacle,
+    handleDeleteObstacle, handleGenerateCuts
+  } = useProjectMutations(
+    firestore, project ?? null, activeSurface, activeSurfacePieces, activeSurfaceObstacles,
+    placedPieces, obstacles, es, addToHistory, toast,
+    currentObstaclePoints, editingObstacleId,
+    setIsDrawingObstacle, setEditingObstacleId, setCurrentObstaclePoints, setIsObstaclesSheetOpen
   );
 
-  // ── Metrics ──────────────────────────────────────────────────────────────
-  const areaToCover = useMemo(() => {
-    if (!activeSurface) return 0;
-    return activeSurface.width * activeSurface.height
-      - activeSurfaceObstacles.reduce((t, o) => t + Math.abs(calculatePolygonArea(o.points)), 0);
-  }, [activeSurface, activeSurfaceObstacles]);
-
-  const coveredArea = useMemo(
-    () => activeSurfacePieces.reduce(
-      (t, p) => t + Math.abs(p.fragments.reduce((s, f) => s + calculatePolygonArea(f.points), 0)), 0),
-    [activeSurfacePieces]
-  );
-
-  const projectAreaToCover = useMemo(() => {
-    if (!surfaces) return 0;
-    return surfaces.reduce((t, s) => t + s.width * s.height, 0)
-      - (obstacles ?? []).reduce((t, o) => t + Math.abs(calculatePolygonArea(o.points)), 0);
-  }, [surfaces, obstacles]);
-
-  const projectCoveredArea = useMemo(
-    () => (placedPieces ?? []).reduce(
-      (t, p) => t + Math.abs(p.fragments.reduce((s, f) => s + calculatePolygonArea(f.points), 0)), 0),
-    [placedPieces]
-  );
-
-  const wasteArea = useMemo(() => {
-    if (!project?.remnants) return 0;
-    return project.remnants.reduce((total, r) => {
-      const frags = r.fragments ?? [{ id: 'legacy', points: r.points }];
-      return total + Math.abs(frags.reduce((s, f) => s + calculatePolygonArea(f.points), 0));
-    }, 0);
-  }, [project?.remnants]);
-
-  const materialUsage = useMemo((): Map<string, number> => {
-    const usage = new Map<string, number>();
-    if (!project?.materials) return usage;
-    project.materials.forEach(m => usage.set(m.id, 0));
-    const uniqueSheets = new Map<string, Set<string>>();
-    (placedPieces ?? []).forEach(p => {
-      const sid = p.sourceSheetId || p.placementId || p.id;
-      if (!uniqueSheets.has(p.materialId)) uniqueSheets.set(p.materialId, new Set());
-      uniqueSheets.get(p.materialId)!.add(sid);
-    });
-    (project.remnants ?? []).forEach(r => {
-      const sid = r.sourceSheetId || r.id;
-      if (!uniqueSheets.has(r.materialId)) uniqueSheets.set(r.materialId, new Set());
-      uniqueSheets.get(r.materialId)!.add(sid);
-    });
-    uniqueSheets.forEach((sheets, matId) => { if (usage.has(matId)) usage.set(matId, sheets.size); });
-    return usage;
-  }, [placedPieces, project?.materials, project?.remnants]);
-
-  const groupedRemnantsByMaterial = useMemo((): Map<string, MaterialRemnantGroup> => {
-    const result = new Map<string, MaterialRemnantGroup>();
-    if (!project?.remnants || !project.materials) return result;
-    const getShapeId = (r: Remnant) => {
-      const frags = r.fragments ?? [{ id: 'legacy', points: r.points }];
-      const allPts = frags.flatMap(f => f.points);
-      const minX = Math.min(...allPts.map(p => p.x));
-      const minY = Math.min(...allPts.map(p => p.y));
-      return frags.map(f => {
-        const pts = f.points
-          .map(p => ({ x: Math.round((p.x - minX) * 100) / 100, y: Math.round((p.y - minY) * 100) / 100 }))
-          .sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
-        return pts.map(p => `${p.x},${p.y}`).join(';');
-      }).sort().join('|');
-    };
-    const shapeGroups = new Map<string, GroupedRemnant>();
-    for (const r of project.remnants) {
-      if (!r.points?.length) continue;
-      const shapeId = getShapeId(r);
-      const key = `${r.materialId}_${shapeId}`;
-      if (shapeGroups.has(key)) {
-        const g = shapeGroups.get(key)!;
-        g.count += 1; g.instanceIds.push(r.id);
-      } else {
-        shapeGroups.set(key, { ...r, count: 1, shapeId, instanceIds: [r.id] });
-      }
-    }
-    for (const gr of shapeGroups.values()) {
-      const material = project.materials.find(m => m.id === gr.materialId);
-      if (!material) continue;
-      if (!result.has(gr.materialId)) result.set(gr.materialId, { material, remnants: [] });
-      result.get(gr.materialId)!.remnants.push(gr);
-    }
-    return result;
-  }, [project?.remnants, project?.materials]);
-
-  // ── Handlers: Pieces ─────────────────────────────────────────────────────
-  const handlePiecePlacement = useCallback(async (positions: Point[]) => {
-    if (!es.activeBrush || !positions.length || !activeSurface || !project || !firestore || !placedPieces) return;
-    const { activeBrush, brushAngle } = es;
-    const materialId = activeBrush.type === 'material' ? activeBrush.id : activeBrush.materialId;
-    if (!materialId) { toast({ title: 'Error Crítico', variant: 'destructive' }); return; }
-
-    const placements = positions.map((pos, index) => {
-      const idealPiece = { x: pos.x, y: pos.y, width: activeBrush.width, height: activeBrush.height, rotation: brushAngle };
-      const currentSourceSheetId = activeBrush.type === 'material'
-        ? crypto.randomUUID()
-        : project.remnants.find(r => r.id === activeBrush.instanceIds[index])?.sourceSheetId;
-      const groupedFragments = calculatePlacementFragments(idealPiece, activeBrush, activeSurface, activeSurfacePieces, activeSurfaceObstacles, es.isFillMode);
-      const allFragments = groupedFragments.flat();
-      const offcuts = groupedFragments.length > 0 ? calculateOffcuts(idealPiece, allFragments, materialId, activeBrush, currentSourceSheetId) : [];
-      return { idealPiece, groupedFragments, offcuts, currentSourceSheetId };
-    });
-
-    const validPlacements = placements.filter(p => p.groupedFragments.length > 0);
-    if (!validPlacements.length) {
-      toast({ title: 'Colocación inválida', description: 'La pieza se superpone. Active el Modo Relleno para recortar automáticamente.', variant: 'destructive' });
-      return;
-    }
-
-        const newPiecesData: Omit<PlacedPiece, 'id'>[] = [];
-    const allOffcuts: Remnant[] = [];
-
-    validPlacements.forEach(({ groupedFragments, offcuts, currentSourceSheetId }) => {
-      const placementId = crypto.randomUUID();
-      groupedFragments.forEach(fragmentGroup => {
-        const allPoints = fragmentGroup.flatMap(f => f.points);
-        const xs = allPoints.map(p => p.x), ys = allPoints.map(p => p.y);
-        newPiecesData.push({
-          placementId, surfaceId: activeSurface.id, materialId,
-          source: { type: activeBrush.type, id: activeBrush.type === 'remnant' ? activeBrush.shapeId : activeBrush.id },
-          x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2,
-          width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys),
-          rotation: 0, fragments: fragmentGroup,
-          createdAt: serverTimestamp(), sourceSheetId: currentSourceSheetId,
-        } as Omit<PlacedPiece, 'id'>);
-      });
-      allOffcuts.push(...offcuts);
-    });
-
-    try {
-      const projectRef = doc(firestore, 'projects', project.id);
-      const projectSnap = await getDoc(projectRef);
-      const currentRemnants = projectSnap.exists() ? (projectSnap.data().remnants ?? []) : [];
-
-      let newRemnantsState = [...currentRemnants];
-      if (activeBrush.type === 'remnant') {
-        const numUsed = validPlacements.length;
-        newRemnantsState = newRemnantsState.filter(r => !activeBrush.instanceIds.slice(0, numUsed).includes(r.id));
-        const newCount = activeBrush.count - numUsed;
-        if (newCount > 0) es.setActiveBrush({ ...activeBrush, count: newCount, instanceIds: activeBrush.instanceIds.slice(numUsed) });
-        else es.setActiveBrush(null);
-      }
-      if (allOffcuts.length) newRemnantsState = [...newRemnantsState, ...allOffcuts];
-
-      const batch = writeBatch(firestore);
-      const addedPieces: PlacedPiece[] = [];
-      for (const pd of newPiecesData) {
-        const ref = doc(collection(firestore, 'projects', project.id, 'placedPieces'));
-        batch.set(ref, pd);
-        addedPieces.push({ ...pd, id: ref.id, createdAt: new Date() } as PlacedPiece);
-      }
-      batch.update(projectRef, { remnants: newRemnantsState });
-      await batch.commit();
-      addToHistory({
-        type: 'add-pieces',
-        payload: {
-          oldState: { pieces: [], remnants: currentRemnants },
-          newState: { pieces: addedPieces, remnants: newRemnantsState }
-        }
-      });
-    } catch (e) {
-      console.error('Error placing piece(s):', e);
-      toast({ title: 'Error', description: 'No se pudieron guardar las piezas.', variant: 'destructive' });
-    }
-  }, [es, activeSurface, activeSurfacePieces, activeSurfaceObstacles, project, firestore, placedPieces, addToHistory, toast]);
-
-  const handlePieceDelete = useCallback(async (pieceId: string) => {
-    if (!project || !firestore || !placedPieces) return;
-    const pieceRef = doc(firestore, 'projects', project.id, 'placedPieces', pieceId);
-    try {
-      const projectRef = doc(firestore, 'projects', project.id);
-      const [snap, projectSnap] = await Promise.all([
-        getDoc(pieceRef),
-        getDoc(projectRef)
-      ]);
-      if (!snap.exists()) return;
-      const piece = { id: snap.id, ...snap.data() } as PlacedPiece;
-      const currentRemnants = projectSnap.exists() ? (projectSnap.data().remnants ?? []) : [];
-
-      const allPts = piece.fragments.flatMap(f => f.points);
-      const xs = allPts.map(p => p.x), ys = allPts.map(p => p.y);
-      const newRemnant: Remnant = {
-        id: crypto.randomUUID(), materialId: piece.materialId,
-        points: piece.fragments[0]?.points ?? [], fragments: piece.fragments,
-        x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2,
-        width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys),
-        createdAt: new Date(), sourceSheetId: piece.sourceSheetId,
-      };
-      const newRemnantsState = [...currentRemnants, newRemnant];
-      const batch = writeBatch(firestore);
-      batch.delete(pieceRef);
-      batch.update(projectRef, { remnants: newRemnantsState });
-      await batch.commit();
-      addToHistory({
-        type: 'delete-pieces',
-        payload: {
-          oldState: { pieces: [piece], remnants: currentRemnants },
-          newState: { pieces: [], remnants: newRemnantsState }
-        }
-      });
-      toast({ title: 'Pieza movida a cortes' });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error', variant: 'destructive' });
-    }
-  }, [project, firestore, placedPieces, addToHistory, toast]);
-
-  const handleBatchDeletePieces = useCallback(async (pieceIds: string[]) => {
-    if (!project || !firestore || !placedPieces || !pieceIds.length) return;
-    try {
-      const projectRef = doc(firestore, 'projects', project.id);
-      const projectSnap = await getDoc(projectRef);
-      const currentRemnants = projectSnap.exists() ? (projectSnap.data().remnants ?? []) : [];
-      const newRemnantsState = [...currentRemnants];
-
-      const batch = writeBatch(firestore);
-      const deletedPieces: PlacedPiece[] = [];
-      for (const pid of pieceIds) {
-        const ref = doc(firestore, 'projects', project.id, 'placedPieces', pid);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) continue;
-        const piece = { id: snap.id, ...snap.data() } as PlacedPiece;
-        deletedPieces.push(piece);
-        const allPts = piece.fragments.flatMap(f => f.points);
-        const xs = allPts.map(p => p.x), ys = allPts.map(p => p.y);
-        newRemnantsState.push({
-          id: crypto.randomUUID(), materialId: piece.materialId,
-          points: piece.fragments[0]?.points ?? [], fragments: piece.fragments,
-          x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2,
-          width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys),
-          createdAt: new Date(), sourceSheetId: piece.sourceSheetId,
-        });
-        batch.delete(ref);
-      }
-      batch.update(projectRef, { remnants: newRemnantsState });
-      await batch.commit();
-      addToHistory({
-        type: 'delete-pieces',
-        payload: {
-          oldState: { pieces: deletedPieces, remnants: currentRemnants },
-          newState: { pieces: [], remnants: newRemnantsState }
-        }
-      });
-      toast({ title: `${deletedPieces.length} piezas movidas a cortes` });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error', variant: 'destructive' });
-    }
-  }, [project, firestore, placedPieces, addToHistory, toast]);
-
-  const handleClearAll = useCallback(async () => {
-    if (!activeSurface || !project || !firestore || !placedPieces) return;
-    try {
-      const projectRef = doc(firestore, 'projects', projectId);
-      const projectSnap = await getDoc(projectRef);
-      const currentRemnants = projectSnap.exists() ? (projectSnap.data().remnants ?? []) : [];
-      if (!activeSurfacePieces.length && !currentRemnants.length) return;
-
-      const batch = writeBatch(firestore);
-      activeSurfacePieces.forEach(piece => {
-        if (piece.id && !piece.id.startsWith('temp-'))
-          batch.delete(doc(firestore, 'projects', projectId, 'placedPieces', piece.id));
-      });
-      if (currentRemnants.length)
-        batch.update(projectRef, { remnants: [] });
-      await batch.commit();
-      if (es.activeBrush?.type === 'remnant') es.setActiveBrush(null);
-      
-      // Limpiar mediciones locales
-      window.dispatchEvent(new CustomEvent('deco-clear-measurements'));
-
-      addToHistory({
-        type: 'clear-all',
-        payload: {
-          oldState: { pieces: activeSurfacePieces, remnants: currentRemnants },
-          newState: { pieces: [], remnants: [] }
-        }
-      });
-      toast({ title: 'Lienzo y Cortes Limpios' });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error', variant: 'destructive' });
-    }
-  }, [activeSurface, project, firestore, placedPieces, activeSurfacePieces, projectId, es, addToHistory, toast]);
-
-  const handleRotateMaterial = useCallback(() => {
-    if (!project || !firestore || !es.activeBrush || es.activeBrush.type !== 'material') return;
-    const materialId = es.activeBrush.id;
-    updateDoc(doc(firestore, 'projects', project.id), {
-      materials: project.materials.map(m =>
-        m.id === materialId ? { ...m, width: m.height, height: m.width } : m
-      ),
-    });
-    es.setActiveBrush({ ...es.activeBrush, width: es.activeBrush.height, height: es.activeBrush.width });
-  }, [project, firestore, es]);
+  useKeyboardShortcuts(historyIndex, history.length, isUndoingOrRedoing, undo, redo, es, setIsPivotSelectorOpen);
 
   const handleStartDrawingObstacle = useCallback(() => {
     setIsDrawingObstacle(true);
@@ -707,10 +362,7 @@ export default function EditorPage() {
       const dx = newPoint.x - currentStart.x;
       const dy = newPoint.y - currentStart.y;
       if (Math.abs(dx) < 0.0001 && Math.abs(dy) < 0.0001) return prev;
-      return prev.map(p => ({
-        x: p.x + dx,
-        y: p.y + dy,
-      }));
+      return prev.map(p => ({ x: p.x + dx, y: p.y + dy }));
     });
   }, []);
 
@@ -729,67 +381,6 @@ export default function EditorPage() {
     setCurrentObstaclePoints([]);
     setPreviewSegment(null);
   }, []);
-
-  const handleFinishDrawingObstacle = useCallback(async (closeLoop = false, name?: string) => {
-    if (!project || !firestore || !activeSurface || currentObstaclePoints.length < 3) {
-      setIsDrawingObstacle(false); setCurrentObstaclePoints([]); return;
-    }
-    try {
-      if (editingObstacleId) {
-        const existingObs = obstacles?.find(o => o.id === editingObstacleId);
-        await updateDoc(doc(firestore, 'projects', project.id, 'obstacles', editingObstacleId), {
-          points: currentObstaclePoints,
-          name: name || existingObs?.name || `Obstáculo ${activeSurfaceObstacles.length + 1}`,
-        });
-      } else {
-        const obsRef = doc(collection(firestore, 'projects', project.id, 'obstacles'));
-        await setDoc(obsRef, {
-          surfaceId: activeSurface.id,
-          points: currentObstaclePoints,
-          name: name || `Obstáculo ${activeSurfaceObstacles.length + 1}`,
-        });
-      }
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error al guardar obstáculo', variant: 'destructive' });
-    } finally {
-      setIsDrawingObstacle(false);
-      setEditingObstacleId(null);
-      setCurrentObstaclePoints([]);
-      setIsObstaclesSheetOpen(true);
-    }
-  }, [project, firestore, activeSurface, currentObstaclePoints, editingObstacleId, toast, activeSurfaceObstacles]);
-
-  const handleDeleteObstacle = useCallback(async (obstacleId: string) => {
-    if (!project || !firestore) return;
-    try {
-      await deleteDoc(doc(firestore, 'projects', project.id, 'obstacles', obstacleId));
-      toast({ title: 'Obstáculo eliminado con éxito' });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error al eliminar obstáculo', variant: 'destructive' });
-    }
-  }, [project, firestore, toast]);
-
-  const handleGenerateCuts = useCallback(async (newRemnants: Remnant[]) => {
-    if (!project || !firestore) return;
-    try {
-      const oldRemnants = project.remnants ?? [];
-      await updateDoc(doc(firestore, 'projects', project.id), { remnants: arrayUnion(...newRemnants) });
-      const newRemnantsState = [...oldRemnants, ...newRemnants];
-      addToHistory({
-        type: 'generate-cuts',
-        payload: {
-          oldState: { pieces: [], remnants: oldRemnants },
-          newState: { pieces: [], remnants: newRemnantsState }
-        }
-      });
-      toast({ title: 'Cortes Generados', description: `Se han añadido ${newRemnants.length} nuevos cortes al proyecto.` });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Error', variant: 'destructive' });
-    }
-  }, [project, firestore, addToHistory, toast]);
 
   const handleDownloadPDF = useCallback(async () => {
     if (!project || !surfaces || !placedPieces || !obstacles || !firestore) return;
@@ -857,92 +448,17 @@ export default function EditorPage() {
       <main className="flex flex-1 overflow-hidden">
 
         {/* ── Left sidebar: Resumen + Cortes ─────────────────────────────── */}
-        <aside className="w-[320px] min-w-[320px] max-w-[320px] shrink-0 border-r bg-background p-4 h-full flex flex-col gap-6 overflow-y-auto scrollbar-discreet">
-
-          {/* Resumen */}
-          <Collapsible defaultOpen className="border rounded-xl bg-card text-card-foreground shadow-sm transition-all duration-300 ease-in-out">
-            <CollapsibleTrigger className="w-full text-left">
-              <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0 cursor-pointer hover:bg-muted/30 transition-colors rounded-t-xl group">
-                <CardTitle>Resumen</CardTitle>
-                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="collapsible-content">
-              <div className="px-6 pb-2">
-                <div className="flex bg-muted rounded-full p-0.5 border border-border shadow-inner w-full max-w-[200px]">
-                  <button
-                    className={cn(
-                      'flex-1 h-6 px-2 text-[10px] uppercase font-bold rounded-full transition-all duration-300 flex items-center justify-center outline-none',
-                      es.summaryViewMode === 'surface'
-                        ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20'
-                        : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
-                    )}
-                    onClick={e => { e.stopPropagation(); es.setSummaryViewMode('surface'); }}
-                  >
-                    <MousePointer className={cn('h-3 w-3 mr-1', es.summaryViewMode === 'surface' ? 'opacity-100' : 'opacity-40')} />
-                    Superficie
-                  </button>
-                  <button
-                    className={cn(
-                      'flex-1 h-6 px-2 text-[10px] uppercase font-bold rounded-full transition-all duration-300 flex items-center justify-center outline-none',
-                      es.summaryViewMode === 'project'
-                        ? 'bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20'
-                        : 'text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100'
-                    )}
-                    onClick={e => { e.stopPropagation(); es.setSummaryViewMode('project'); }}
-                  >
-                    <Layers className={cn('h-3 w-3 mr-1', es.summaryViewMode === 'project' ? 'opacity-100' : 'opacity-40')} />
-                    Proyecto
-                  </button>
-                </div>
-              </div>
-              <CardContent className="text-sm space-y-4 pt-2">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{es.summaryViewMode === 'surface' ? 'Superficie:' : 'Proyecto Total:'}</span>
-                    <span className="font-medium">{((es.summaryViewMode === 'surface' ? areaToCover : projectAreaToCover) / 10000).toFixed(2)} m²</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Área Cubierta:</span>
-                    <span className="font-medium">{((es.summaryViewMode === 'surface' ? coveredArea : projectCoveredArea) / 10000).toFixed(2)} m²</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Área por cubrir:</span>
-                    <span className="font-medium">
-                      {Math.max(0, ((es.summaryViewMode === 'surface' ? areaToCover : projectAreaToCover) - (es.summaryViewMode === 'surface' ? coveredArea : projectCoveredArea)) / 10000).toFixed(2)} m²
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Desperdicio:</span>
-                    <span className="font-medium text-red-500">{(wasteArea / 10000).toFixed(2)} m²</span>
-                  </div>
-                </div>
-                <Separator />
-                <div className="space-y-3">
-                  <h3 className="font-medium">Materiales Usados</h3>
-                  {project.materials.map(mat => (
-                    <div key={mat.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: mat.color }} />
-                        <span className="font-semibold">{mat.name}</span>
-                      </div>
-                      <span className="font-medium">{materialUsage.get(mat.id) ?? 0}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-
-          <Separator />
-
-          {/* Cortes */}
-          <CortesPanel
-            groupedRemnantsByMaterial={groupedRemnantsByMaterial}
-            activeBrush={es.activeBrush}
-            onSelectRemnant={remnant => es.handleSetActiveBrush({ ...remnant, type: 'remnant' } as Brush)}
-          />
-        </aside>
+        <EditorSidebar
+          es={es}
+          project={project}
+          areaToCover={areaToCover}
+          projectAreaToCover={projectAreaToCover}
+          coveredArea={coveredArea}
+          projectCoveredArea={projectCoveredArea}
+          wasteArea={wasteArea}
+          materialUsage={materialUsage}
+          groupedRemnantsByMaterial={groupedRemnantsByMaterial}
+        />
 
         {/* ── Main area ──────────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col">
