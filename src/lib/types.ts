@@ -118,11 +118,18 @@ export type Brush = (Material & { type: 'material' }) | (GroupedRemnant & { type
 export type PivotPoint = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 export type MeasureMode = 'area' | 'vertex' | 'distance';
 
-type HistoryAction =
-  | { type: 'add-pieces'; payload: { pieces: PlacedPiece[], oldRemnants: Remnant[] } }
-  | { type: 'delete-pieces'; payload: { pieces: PlacedPiece[], newRemnants: Remnant[] } }
-  | { type: 'clear-all'; payload: { pieces: PlacedPiece[], oldRemnants: Remnant[] } }
-  | { type: 'generate-cuts'; payload: { newRemnants: Remnant[], oldRemnants: Remnant[] } };
+export interface HistoryState {
+  pieces: PlacedPiece[];
+  remnants: Remnant[];
+}
+
+export type HistoryAction = {
+  type: 'add-pieces' | 'delete-pieces' | 'clear-all' | 'generate-cuts';
+  payload: {
+    oldState: HistoryState;
+    newState: HistoryState;
+  };
+};
 
 
 export interface ClientState {
@@ -176,6 +183,11 @@ export interface VertexMeasurement {
   p1: Point;
   p2: Point;
   length: number;
+}
+
+export interface VertexFigure {
+  id: string;
+  segments: VertexMeasurement[];
 }
 
 // ---- Cash Control Types ----
