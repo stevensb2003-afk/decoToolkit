@@ -36,7 +36,7 @@ export function GridOverlay({ surface, spacing, editorScale }: GridOverlayProps)
           );
         })}
         {Array.from({ length: horizontalCount }, (_, i) => {
-          const y = i * stepPx;
+          const y = svgHeight - (i * stepPx);
           return (
             <line
               key={`h-${i}`}

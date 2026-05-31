@@ -211,6 +211,7 @@ export default function CashControlPage() {
     const [alegraApiKey, setAlegraApiKey] = useState("");
     const [alegraDefaultCajaId, setAlegraDefaultCajaId] = useState<string>("");
     const [isSavingAlegra, setIsSavingAlegra] = useState(false);
+    const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
 
     // Filtering State
     const [filterType, setFilterType] = useState<string>("all");
@@ -560,7 +561,8 @@ export default function CashControlPage() {
     }, [transactions, filterType, filterCategory]);
 
     const handleOpenCaja = async () => {
-        if (!user) return;
+        if (!user || isSubmittingTransaction) return;
+        setIsSubmittingTransaction(true);
         const amount = parseFloat(openingBalance);
         try {
             const cajaName = cajas.find(c => c.id === selectedCajaId)?.name || "Caja";
@@ -582,11 +584,14 @@ export default function CashControlPage() {
             setIsOpeningDialogOpen(false);
         } catch (error) {
             toast({ title: "Error", description: "No se pudo abrir la caja", variant: "destructive" });
+        } finally {
+            setIsSubmittingTransaction(false);
         }
     };
 
     const handleCloseCaja = async () => {
-        if (!activeSession || !user) return;
+        if (!activeSession || !user || isSubmittingTransaction) return;
+        setIsSubmittingTransaction(true);
         const balance = stats.currentBalance;
 
         try {
@@ -601,17 +606,21 @@ export default function CashControlPage() {
             setIsResponsibilityConfirmed(false);
         } catch (error) {
             toast({ title: "Error", description: "Error al cerrar la caja", variant: "destructive" });
+        } finally {
+            setIsSubmittingTransaction(false);
         }
     };
 
     const handleAddTransaction = async (type: 'income' | 'expense') => {
-        if (!user || !activeSession) return;
+        if (!user || !activeSession || isSubmittingTransaction) return;
+        setIsSubmittingTransaction(true);
 
         const form = type === 'income' ? incomeForm : expenseForm;
         const amount = parseFloat(form.amount);
 
         if (isNaN(amount) || amount <= 0) {
             toast({ title: "Error", description: "Monto inválido", variant: "destructive" });
+            setIsSubmittingTransaction(false);
             return;
         }
 
@@ -641,15 +650,19 @@ export default function CashControlPage() {
             }
         } catch (error) {
             toast({ title: "Error", description: "Error al registrar movimiento", variant: "destructive" });
+        } finally {
+            setIsSubmittingTransaction(false);
         }
     };
 
     const handlePartialWithdrawal = async () => {
-        if (!user || !activeSession) return;
+        if (!user || !activeSession || isSubmittingTransaction) return;
+        setIsSubmittingTransaction(true);
         const amount = parseFloat(partialWithdrawalAmount);
 
         if (isNaN(amount) || amount <= 0) {
             toast({ title: "Error", description: "Monto inválido", variant: "destructive" });
+            setIsSubmittingTransaction(false);
             return;
         }
 
@@ -672,6 +685,8 @@ export default function CashControlPage() {
             setIsPartialWithdrawalOpen(false);
         } catch (error) {
             toast({ title: "Error", description: "Error al registrar retiro", variant: "destructive" });
+        } finally {
+            setIsSubmittingTransaction(false);
         }
     };
 
@@ -1476,8 +1491,8 @@ export default function CashControlPage() {
                                                 )}
                                             </div>
                                             <DialogFooter>
-                                                <Button variant="outline" onClick={() => setIsOpeningDialogOpen(false)}>Cancelar</Button>
-                                                <Button onClick={handleOpenCaja}>Confirmar Apertura</Button>
+                                                <Button variant="outline" disabled={isSubmittingTransaction} onClick={() => setIsOpeningDialogOpen(false)}>Cancelar</Button>
+                                                <Button onClick={handleOpenCaja} disabled={isSubmittingTransaction}>{isSubmittingTransaction ? "Abriendo..." : "Confirmar Apertura"}</Button>
                                             </DialogFooter>
                                         </DialogContent>
                                     </Dialog>
@@ -1545,8 +1560,8 @@ export default function CashControlPage() {
                                                     onChange={(e) => setIncomeForm({ ...incomeForm, description: e.target.value })}
                                                 />
                                             </div>
-                                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-9">
-                                                Agregar Ingreso
+                                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 h-9" disabled={isSubmittingTransaction || loading}>
+                                                {isSubmittingTransaction ? "Registrando..." : "Agregar Ingreso"}
                                             </Button>
                                         </form>
                                     </CardContent>
@@ -1601,8 +1616,8 @@ export default function CashControlPage() {
                                                     onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
                                                 />
                                             </div>
-                                            <Button type="submit" variant="destructive" className="w-full h-9">
-                                                Registrar Gasto
+                                            <Button type="submit" variant="destructive" className="w-full h-9" disabled={isSubmittingTransaction || loading}>
+                                                {isSubmittingTransaction ? "Registrando..." : "Registrar Gasto"}
                                             </Button>
                                         </form>
                                     </CardContent>
@@ -1653,8 +1668,8 @@ export default function CashControlPage() {
                                                 </div>
                                             </div>
                                             <DialogFooter>
-                                                <Button variant="outline" onClick={() => setIsPartialWithdrawalOpen(false)}>Cancelar</Button>
-                                                <Button onClick={handlePartialWithdrawal} className="bg-blue-600 hover:bg-blue-700">Confirmar Retiro</Button>
+                                                <Button variant="outline" disabled={isSubmittingTransaction} onClick={() => setIsPartialWithdrawalOpen(false)}>Cancelar</Button>
+                                                <Button onClick={handlePartialWithdrawal} className="bg-blue-600 hover:bg-blue-700" disabled={isSubmittingTransaction}>{isSubmittingTransaction ? "Retirando..." : "Confirmar Retiro"}</Button>
                                             </DialogFooter>
                                         </DialogContent>
                                     </Dialog>
@@ -1709,14 +1724,14 @@ export default function CashControlPage() {
                                                 </div>
                                             </div>
                                             <DialogFooter className="gap-2 sm:gap-0">
-                                                <Button variant="outline" onClick={() => setIsClosingDialogOpen(false)}>Cancelar</Button>
+                                                <Button variant="outline" disabled={isSubmittingTransaction} onClick={() => setIsClosingDialogOpen(false)}>Cancelar</Button>
                                                 <Button
                                                     variant="destructive"
                                                     className="font-black px-8"
-                                                    disabled={!isResponsibilityConfirmed}
+                                                    disabled={!isResponsibilityConfirmed || isSubmittingTransaction}
                                                     onClick={handleCloseCaja}
                                                 >
-                                                    EFECTUAR CIERRE
+                                                    {isSubmittingTransaction ? "Cerrando..." : "EFECTUAR CIERRE"}
                                                 </Button>
                                             </DialogFooter>
                                         </DialogContent>

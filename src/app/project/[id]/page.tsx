@@ -24,6 +24,8 @@ import { useProjectHydration } from './_hooks/useProjectHydration';
 import { useProjectMutations } from './_hooks/useProjectMutations';
 import { useKeyboardShortcuts } from './_hooks/useKeyboardShortcuts';
 import { EditorSidebar } from './_components/EditorSidebar';
+import { EditorTopBar } from './_components/EditorTopBar';
+import { EditorBottomBar } from './_components/EditorBottomBar';
 
 import { MobileProjectView } from './_components/MobileProjectView';
 import { Canvas } from './_components/Canvas/Canvas';
@@ -77,203 +79,7 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 type MaterialRemnantGroup = { material: Material; remnants: GroupedRemnant[] };
 
-// ── Sub-components (inlined, small) ──────────────────────────────────────────
-function ToolButton({
-  tooltip, Icon, isActive, onClick, children,
-}: {
-  tooltip: string;
-  Icon?: React.ElementType;
-  isActive?: boolean;
-  onClick?: (e: React.MouseEvent) => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'rounded-full h-12 w-12',
-              isActive && 'bg-primary/20 text-primary hover:bg-primary/25 hover:text-primary'
-            )}
-            onClick={onClick}
-          >
-            {Icon && <Icon className="h-6 w-6" />}
-            {children}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent><p>{tooltip}</p></TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
-const pivotIcons: Record<PivotPoint, React.ElementType> = {
-  topLeft: ArrowUpLeft, topRight: ArrowUpRight,
-  bottomLeft: ArrowDownLeft, bottomRight: ArrowDownRight,
-};
-
-function PivotSelector({ currentPivot, onPivotChange, isOpen, onOpenChange }: {
-  currentPivot: PivotPoint;
-  onPivotChange: (p: PivotPoint) => void;
-  isOpen: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const CurrentIcon = pivotIcons[currentPivot];
-  return (
-    <Popover open={isOpen} onOpenChange={onOpenChange}>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full h-12 w-12"
-                onClick={() => onOpenChange(!isOpen)}>
-                <CurrentIcon className="h-6 w-6" />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent><p>Punto de Pivote (Ctrl+A)</p></TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent className="w-auto p-1">
-        <div className="grid grid-cols-2 gap-1">
-          {(Object.keys(pivotIcons) as PivotPoint[]).map(pivot => {
-            const Icon = pivotIcons[pivot];
-            return (
-              <Button key={pivot} variant={currentPivot === pivot ? 'secondary' : 'ghost'}
-                size="icon" className="h-10 w-10"
-                onClick={() => { onPivotChange(pivot); onOpenChange(false); }}>
-                <Icon className="h-5 w-5" />
-              </Button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function MeasureToolSelector({ isMeasureMode, measureMode, onToolSelect, isOpen, onOpenChange }: {
-  isMeasureMode: boolean;
-  measureMode: MeasureMode;
-  onToolSelect: (tool: 'brush' | 'eraser' | 'measure' | 'hand', mode?: MeasureMode) => void;
-  isOpen: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  return (
-    <Popover open={isOpen} onOpenChange={onOpenChange}>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon"
-                className={cn('rounded-full h-12 w-12', isMeasureMode && 'bg-primary/20 text-primary hover:bg-primary/25 hover:text-primary')}
-                onClick={() => {
-                  if (!isMeasureMode) onToolSelect('measure');
-                  onOpenChange(!isOpen);
-                }}>
-                <Ruler className="h-6 w-6" />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent><p>Medir (Ctrl+R)</p></TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent className="w-auto p-1">
-        <div className="grid grid-cols-1 gap-1">
-          <Button variant={measureMode === 'area' ? 'secondary' : 'ghost'}
-            className="justify-start" onClick={() => { onToolSelect('measure', 'area'); onOpenChange(false); }}>
-            <Square className="mr-2 h-4 w-4" /> Medir Área
-          </Button>
-          <Button variant={measureMode === 'distance' ? 'secondary' : 'ghost'}
-            className="justify-start" onClick={() => { onToolSelect('measure', 'distance'); onOpenChange(false); }}>
-            <LineChart className="mr-2 h-4 w-4" /> Medir Distancia
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function GuideSettingsPopover({
-  showGrid, gridSpacing, onShowGridChange, onGridSpacingChange, isGridSnapActive, onGridSnapChange
-}: {
-  showGrid: boolean;
-  gridSpacing: number;
-  onShowGridChange: (v: boolean) => void;
-  onGridSpacingChange: (v: number) => void;
-  isGridSnapActive: boolean;
-  onGridSnapChange: (v: boolean) => void;
-}) {
-  const predefinedSpacings = [
-    { label: '10cm', value: 10 },
-    { label: '25cm', value: 25 },
-    { label: '50cm', value: 50 },
-    { label: '1m', value: 100 },
-    { label: '2m', value: 200 },
-    { label: '5m', value: 500 },
-  ];
-
-  return (
-    <Popover>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button variant={showGrid ? 'secondary' : 'outline'} size="icon" className="flex-shrink-0">
-                <Grid3X3 className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent><p>Configurar cuadrícula</p></TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent className="w-64 p-4 rounded-xl shadow-lg border-muted" align="start">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm">Mostrar Guías</h4>
-            <Switch
-              checked={showGrid}
-              onCheckedChange={onShowGridChange}
-              className="scale-110"
-            />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Alinear a Cuadrícula</Label>
-            <Switch
-              checked={isGridSnapActive}
-              onCheckedChange={onGridSnapChange}
-              disabled={!showGrid}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Espaciado</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {predefinedSpacings.map(sp => (
-                <Button
-                  key={sp.value}
-                  variant={gridSpacing === sp.value ? "default" : "secondary"}
-                  className={`h-9 text-sm font-medium ${gridSpacing === sp.value ? "bg-[#38bdf8] hover:bg-[#0ea5e9] text-white" : "bg-muted/50 hover:bg-muted text-foreground"}`}
-                  onClick={() => onGridSpacingChange(sp.value)}
-                >
-                  {sp.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-          
-          <p className="text-[11px] text-muted-foreground italic leading-tight mt-2">
-            Las guías visuales ayudan a medir distancias y alinear elementos proporcionalmente.
-          </p>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function EditorPage() {
@@ -464,229 +270,29 @@ export default function EditorPage() {
         <div className="flex-1 min-w-0 flex flex-col">
 
           {/* Top Toolbar */}
-          <div className="flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => router.push('/projects')}>
-                    <Folder className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent><p>Mis Proyectos</p></TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <EditProjectSheet project={project} surfaces={surfaces} />
-            <Separator orientation="vertical" className="h-8" />
-
-            <div className="flex items-center gap-2">
-              <TooltipProvider>
-                {/* Surface selector */}
-                {surfaces.length > 0 && (
-                  <Select value={es.activeSurfaceId ?? ''} onValueChange={es.setActiveSurfaceId}>
-                    <SelectTrigger className="w-[180px] h-9">
-                      <SelectValue placeholder="Seleccionar Superficie" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {surfaces.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {/* Clear canvas */}
-                <AlertDialog>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="hover:text-red-600"
-                            disabled={activeSurfacePieces.length === 0 && !(project.remnants?.length)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent><p>Limpiar Lienzo y Cortes</p></TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Esta acción no se puede deshacer. Se eliminarán todas las piezas de «{activeSurface?.name}» y todos los cortes del proyecto.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleClearAll}>Continuar</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-
-                <Separator orientation="vertical" className="h-6 mx-2" />
-
-                {/* Undo / Redo */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" onClick={undo} disabled={!canUndo || isUndoingOrRedoing}>
-                      <Undo className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Deshacer (Ctrl+Z)</p></TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" onClick={redo} disabled={!canRedo || isUndoingOrRedoing}>
-                      <Redo className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Rehacer (Ctrl+Y)</p></TooltipContent>
-                </Tooltip>
-
-                <Separator orientation="vertical" className="h-6 mx-2" />
-
-                {/* Obstacles Sheet */}
-                <ObstaclesSheet
-                  project={project}
-                  obstacles={activeSurfaceObstacles}
-                  activeSurface={activeSurface}
-                  onStartDrawing={handleStartDrawingObstacle}
-                  onEditObstacle={handleEditObstacle}
-                  isOpen={isObstaclesSheetOpen}
-                  onOpenChange={setIsObstaclesSheetOpen}
-                  onDeleteObstacle={handleDeleteObstacle}
-                />
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="icon" onClick={() => setIsObstaclesSheetOpen(true)} className="flex-shrink-0">
-                      <ObstacleIcon className="h-4 w-4 text-orange-500" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Gestor de Obstáculos</p></TooltipContent>
-                </Tooltip>
-
-                {/* Guide settings */}
-                <GuideSettingsPopover
-                  showGrid={es.showGrid}
-                  gridSpacing={es.gridSpacing}
-                  onShowGridChange={es.setShowGrid}
-                  onGridSpacingChange={es.setGridSpacing}
-                  isGridSnapActive={es.isGridSnapActive}
-                  onGridSnapChange={es.setIsGridSnapActive}
-                />
-
-                <Separator orientation="vertical" className="h-6 mx-2" />
-
-                {/* Material selector */}
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={es.activeBrush?.type === 'material' ? es.activeBrush.id : 'none'}
-                    onValueChange={value => {
-                      if (value === 'none') { es.setActiveBrush(null); return; }
-                      const mat = project.materials.find(m => m.id === value);
-                      if (mat) es.handleSetActiveBrush({ ...mat, type: 'material' });
-                    }}
-                  >
-                    <SelectTrigger className="w-[220px] h-10 bg-muted/50 border-muted-foreground/20">
-                      <SelectValue placeholder="Material Activo">
-                        {es.activeBrush?.type === 'material' ? (
-                          <div className="flex items-center gap-2 text-left w-full overflow-hidden">
-                            <span className="h-4 w-4 rounded-full shadow-sm shrink-0" style={{ backgroundColor: es.activeBrush.color }} />
-                            <div className="flex flex-col min-w-0 leading-tight">
-                              <span className="truncate font-medium text-xs">{es.activeBrush.name}</span>
-                              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                {convertFromCm(es.activeBrush.width, 'm').toFixed(2)}m x {convertFromCm(es.activeBrush.height, 'm').toFixed(2)}m
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Elegir Material</span>
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none" className="text-muted-foreground italic font-normal">
-                        Ninguno (Deseleccionar)
-                      </SelectItem>
-                      <Separator className="my-1 ring-1 ring-muted" />
-                      {project.materials.map(mat => (
-                        <SelectItem key={mat.id} value={mat.id}>
-                          <div className="flex items-center gap-2">
-                            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: mat.color }} />
-                            <div className="flex flex-col">
-                              <span className="font-medium text-xs">{mat.name}</span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {convertFromCm(mat.width, 'm').toFixed(2)}m x {convertFromCm(mat.height, 'm').toFixed(2)}m
-                              </span>
-                            </div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {es.activeBrush?.type === 'material' && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8"
-                          onClick={() => es.setActiveBrush(null)}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent><p>Deseleccionar Material</p></TooltipContent>
-                    </Tooltip>
-                  )}
-
-                  {es.activeBrush?.type === 'material' && (
-                    <div className="flex items-center gap-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleRotateMaterial}>
-                            <RotateCw className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Rotar Veta</p></TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-9 w-9"
-                            onClick={() => setCuttingMaterial(es.activeBrush as Material)}>
-                            <Scissors className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Cortar Material</p></TooltipContent>
-                      </Tooltip>
-                    </div>
-                  )}
-                </div>
-              </TooltipProvider>
-            </div>
-
-            <div className="flex-grow" />
-
-            {/* Mode toggles */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
-                <Switch id="fill-mode" checked={es.isFillMode} onCheckedChange={es.setIsFillMode} className="scale-90" />
-                <Label htmlFor="fill-mode" className="text-[11px] leading-tight select-none cursor-pointer whitespace-normal max-w-[70px]">
-                  Modo<br />Relleno
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch id="snap-mode" checked={es.isObstacleSnapActive} onCheckedChange={es.setIsObstacleSnapActive} className="scale-90" />
-                <Label htmlFor="snap-mode" className="text-[11px] leading-tight select-none cursor-pointer whitespace-normal max-w-[70px]">
-                  Alinear a<br />obstáculos
-                </Label>
-              </div>
-            </div>
-
-            {/* PDF Download */}
-            <div className="ml-auto flex items-center gap-4">
-              <Button variant="outline" size="icon" onClick={handleDownloadPDF} title="Descargar Reporte PDF">
-                <Download className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          <EditorTopBar
+            router={router}
+            project={project}
+            surfaces={surfaces}
+            activeSurface={activeSurface}
+            activeSurfacePieces={activeSurfacePieces}
+            activeSurfaceObstacles={activeSurfaceObstacles}
+            es={es}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            isUndoingOrRedoing={isUndoingOrRedoing}
+            undo={undo}
+            redo={redo}
+            handleClearAll={handleClearAll}
+            handleStartDrawingObstacle={handleStartDrawingObstacle}
+            handleEditObstacle={handleEditObstacle}
+            handleDeleteObstacle={handleDeleteObstacle}
+            isObstaclesSheetOpen={isObstaclesSheetOpen}
+            setIsObstaclesSheetOpen={setIsObstaclesSheetOpen}
+            handleRotateMaterial={handleRotateMaterial}
+            setCuttingMaterial={setCuttingMaterial}
+            handleDownloadPDF={handleDownloadPDF}
+          />
 
           {/* Canvas area */}
           <div className="flex-1 bg-card p-2 relative overflow-hidden flex flex-col">
@@ -779,88 +385,14 @@ export default function EditorPage() {
             </div>
 
             {/* ── Bottom floating toolbar ──────────────────────────────── */}
-            <div className="h-20 flex items-center justify-center relative z-20 pointer-events-none bg-background/50 backdrop-blur-sm border-t">
-              <div className="pointer-events-auto flex items-center gap-2 p-1.5 rounded-full bg-background/95 shadow-lg border ring-1 ring-border/50 hover:scale-[1.01] transition-transform">
-
-                {/* Seleccionar */}
-                <ToolButton
-                  tooltip="Seleccionar (Ctrl+V)"
-                  Icon={MousePointer}
-                  isActive={!es.isEraserMode && !es.isMeasureMode && !isDrawingObstacle && !es.isHandMode && !es.activeBrush}
-                  onClick={() => es.handleToolSelect('brush')}
-                />
-
-                {/* Mover (Hand) */}
-                <ToolButton
-                  tooltip="Mover (Ctrl+H)"
-                  isActive={es.isHandMode}
-                  onClick={() => {
-                    es.setIsHandMode(!es.isHandMode);
-                    if (!es.isHandMode) { es.setIsEraserMode(false); es.setIsMeasureMode(false); es.setActiveBrush(null); }
-                  }}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    className="h-6 w-6">
-                    <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
-                    <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
-                    <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8" />
-                    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
-                  </svg>
-                </ToolButton>
-
-                <Separator orientation="vertical" className="h-6 mx-1" />
-
-                {/* Borrador */}
-                <ToolButton
-                  tooltip="Borrador (Ctrl+E)"
-                  Icon={Eraser}
-                  isActive={es.isEraserMode}
-                  onClick={() => es.handleToolSelect('eraser')}
-                />
-
-                <Separator orientation="vertical" className="h-6 mx-1" />
-
-                {/* Medidor */}
-                <MeasureToolSelector
-                  isMeasureMode={es.isMeasureMode}
-                  measureMode={es.measureMode}
-                  onToolSelect={es.handleToolSelect}
-                  isOpen={isMeasureToolOpen}
-                  onOpenChange={setIsMeasureToolOpen}
-                />
-
-                <Separator orientation="vertical" className="h-6 mx-1" />
-
-                {/* Zoom controls */}
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"
-                    onClick={() => es.setViewZoom(Math.max(0.1, es.viewZoom - 0.1))}>
-                    <span className="text-lg font-bold">-</span>
-                  </Button>
-                  <span className="text-xs w-8 text-center">{Math.round(es.viewZoom * 100)}%</span>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"
-                    onClick={() => es.setViewZoom(Math.min(5, es.viewZoom + 0.1))}>
-                    <span className="text-lg font-bold">+</span>
-                  </Button>
-                </div>
-
-                <Separator orientation="vertical" className="h-6 mx-1" />
-
-                {/* Pivot selector */}
-                <PivotSelector
-                  currentPivot={es.pivotPoint}
-                  onPivotChange={es.setPivotPoint}
-                  isOpen={isPivotSelectorOpen}
-                  onOpenChange={setIsPivotSelectorOpen}
-                />
-              </div>
-
-              {/* Help button (absolute right) */}
-              <div className="absolute right-4 pointer-events-auto">
-                <HelpDialog />
-              </div>
-            </div>
+            <EditorBottomBar
+              es={es}
+              isDrawingObstacle={isDrawingObstacle}
+              isMeasureToolOpen={isMeasureToolOpen}
+              setIsMeasureToolOpen={setIsMeasureToolOpen}
+              isPivotSelectorOpen={isPivotSelectorOpen}
+              setIsPivotSelectorOpen={setIsPivotSelectorOpen}
+            />
           </div>
         </div>
       </main>
