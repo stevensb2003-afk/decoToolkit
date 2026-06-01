@@ -1,24 +1,52 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Camera, ImageIcon, X, Loader2 } from 'lucide-react';
+import { useRef, useState, useCallback } from 'react';
+import { Camera, ImageIcon, X, Loader2, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { uploadDefaultTextureAction, deleteDefaultTextureAction } from '@/lib/storage-actions';
 import { useToast } from '@/hooks/use-toast';
 import type { MaterialTexture } from '@/lib/types';
+import { resizeForAI } from '@/lib/perspective-warp';
+import type { Corners } from '@/lib/perspective-warp';
+import { getAuth } from 'firebase/auth';
+import { PerspectiveCropDialog } from '@/components/ui/PerspectiveCropDialog';
 
 interface Props {
   materialId: string;
   currentTexture?: MaterialTexture;
-  materialWidth: number;
-  materialHeight: number;
+  materialWidth: number;   // in cm
+  materialHeight: number;  // in cm
   onTextureChange: (texture: MaterialTexture | null) => void;
 }
+
+type Phase = 'idle' | 'detecting' | 'reviewing' | 'uploading' | 'done';
 
 const MAX_SIZE_BYTES = 15 * 1024 * 1024;
 
 function extractFileName(storagePath: string): string {
   return storagePath.split('/').pop() ?? storagePath;
+}
+
+async function detectCorners(base64: string, mimeType: string): Promise<any | null> {
+  try {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) return null;
+    const token = await user.getIdToken();
+
+    const res = await fetch('/api/detect-corners', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ imageBase64: base64, mimeType }),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.fallback) return null; // full image — no warp needed
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 export function DefaultMaterialTextureUploader({
@@ -31,23 +59,20 @@ export function DefaultMaterialTextureUploader({
   const { toast } = useToast();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
   const [deleting, setDeleting] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  function validateDimensions(): boolean {
-    if (materialWidth <= 0 || materialHeight <= 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Dimensiones requeridas',
-        description: 'Define primero el ancho y alto del material.',
-      });
-      return false;
-    }
-    return true;
-  }
+  const [cropData, setCropData] = useState<{
+    file: File;
+    previewUrl: string;
+    corners: Corners;
+    metadata?: any;
+  } | null>(null);
 
-  async function handleFile(file: File | undefined) {
+  const dimensionsOk = materialWidth > 0 && materialHeight > 0;
+
+  const handleFileSelection = useCallback(async (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       toast({ variant: 'destructive', title: 'Archivo no válido', description: 'Solo se aceptan imágenes.' });
@@ -58,55 +83,93 @@ export function DefaultMaterialTextureUploader({
       return;
     }
 
-    setUploading(true);
-    setProgress(10);
-    const interval = setInterval(() => setProgress(p => (p < 85 ? p + 10 : p)), 400);
+    setPhase('detecting');
+    setProgress(15);
+
+    try {
+      const { base64, mimeType } = await resizeForAI(file, 1024);
+      const aiResult = await detectCorners(base64, mimeType);
+
+      if (aiResult) {
+        // AI found corners -> Go to manual review
+        setCropData({
+          file,
+          previewUrl: `data:${mimeType};base64,${base64}`,
+          corners: aiResult,
+          metadata: aiResult.metadata,
+        });
+        setPhase('reviewing');
+        setProgress(30);
+      } else {
+        // AI failed or fallback -> Upload original directly
+        toast({ title: 'Aviso', description: 'No se detectaron bordes claros. Subiendo imagen original.' });
+        await processAndUpload(file);
+      }
+    } catch (err) {
+      console.warn('[TextureUploader] AI detection failed, uploading original:', err);
+      await processAndUpload(file);
+    }
+  }, [toast]); // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  const processAndUpload = async (fileToUpload: File, metadata?: any) => {
+    setPhase('uploading');
+    setProgress(70);
+    const interval = setInterval(() => setProgress(p => (p < 92 ? p + 5 : p)), 400);
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', fileToUpload);
+      if (metadata) {
+        formData.append('metadata', JSON.stringify(metadata));
+      }
       const result = await uploadDefaultTextureAction(materialId, formData);
 
       if (!result.success) {
         toast({ variant: 'destructive', title: 'Error al subir', description: result.error });
+        setPhase('idle');
         return;
       }
       setProgress(100);
+      setPhase('done');
       onTextureChange(result.texture);
     } catch (err) {
       console.error('Upload error:', err);
       toast({ variant: 'destructive', title: 'Error al subir', description: 'No se pudo subir la textura.' });
+      setPhase('idle');
     } finally {
       clearInterval(interval);
-      setUploading(false);
-      setProgress(0);
+      setTimeout(() => { setPhase('idle'); setProgress(0); setCropData(null); }, 600);
     }
-  }
+  };
 
-  async function handleDelete() {
+  const handleDelete = async () => {
     if (!currentTexture) return;
     setDeleting(true);
     try {
       await deleteDefaultTextureAction(currentTexture.storagePath);
       onTextureChange(null);
-    } catch (err) {
-      console.error('Delete error:', err);
+    } catch {
       toast({ variant: 'destructive', title: 'Error al eliminar', description: 'No se pudo eliminar la textura.' });
     } finally {
       setDeleting(false);
     }
-  }
+  };
 
-  if (uploading) {
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (phase !== 'idle' && phase !== 'done' && phase !== 'reviewing') {
+    const labels: Record<string, string> = {
+      detecting: '🤖 Detectando bordes con IA...',
+      uploading: '☁️ Subiendo textura...',
+    };
     return (
-      <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-3">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+        <div className="flex items-center gap-2.5 mb-3">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          <span className="text-xs text-zinc-400">Subiendo textura...</span>
+          <span className="text-xs font-medium text-primary">{labels[phase]}</span>
         </div>
-        <div className="w-full h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-primary rounded-full transition-all duration-300"
+            className="h-full bg-gradient-to-r from-primary to-primary/70 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -114,20 +177,27 @@ export function DefaultMaterialTextureUploader({
     );
   }
 
+  // ── Texture preview ────────────────────────────────────────────────────────
   if (currentTexture) {
     return (
-      <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-2 flex items-center gap-3">
+      <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/60 p-2.5 flex items-center gap-3">
         <div
-          className="h-14 w-14 rounded border border-zinc-700 bg-cover bg-center flex-shrink-0"
+          className="h-16 w-16 rounded-lg border border-zinc-700 bg-cover bg-center flex-shrink-0 shadow-inner"
           style={{ backgroundImage: `url(${currentTexture.url})` }}
         />
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-medium text-zinc-300 truncate">
+          <p className="text-[11px] font-semibold text-zinc-200 truncate">
             {extractFileName(currentTexture.storagePath)}
           </p>
-          <p className="text-[10px] text-zinc-500">
-            {currentTexture.originalWidth}×{currentTexture.originalHeight}px
+          <p className="text-[10px] text-zinc-500 mt-0.5">
+            {currentTexture.originalWidth > 0
+              ? `${currentTexture.originalWidth}×${currentTexture.originalHeight}px`
+              : 'Textura procesada con IA'}
           </p>
+          <div className="flex items-center gap-1 mt-1">
+            <Sparkles className="h-2.5 w-2.5 text-primary/70" />
+            <span className="text-[9px] text-primary/70 font-medium">Procesada con IA</span>
+          </div>
         </div>
         <Button
           type="button"
@@ -143,45 +213,72 @@ export function DefaultMaterialTextureUploader({
     );
   }
 
+  // ── Upload buttons ─────────────────────────────────────────────────────────
   return (
-    <div className="rounded-md border border-dashed border-zinc-700 bg-zinc-900/40 p-3 flex flex-col items-center gap-2">
-      <ImageIcon className="h-6 w-6 text-zinc-600" />
-      <p className="text-[10px] text-zinc-500">Añade una textura al material</p>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs gap-1.5 border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-          onClick={() => { if (!validateDimensions()) return; cameraRef.current?.click(); }}
-        >
-          <Camera className="h-3.5 w-3.5" /> Tomar foto
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs gap-1.5 border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-          onClick={() => { if (!validateDimensions()) return; galleryRef.current?.click(); }}
-        >
-          <ImageIcon className="h-3.5 w-3.5" /> Subir imagen
-        </Button>
+    <div className="space-y-2">
+      {!dimensionsOk && (
+        <div className="flex items-center gap-2 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <AlertCircle className="h-3 w-3 flex-shrink-0" />
+          Define el ancho y alto del material para activar la cámara.
+        </div>
+      )}
+      <div className="rounded-xl border border-dashed border-zinc-700/80 bg-zinc-900/30 p-4 flex flex-col items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-primary/80" />
+          <p className="text-[11px] font-medium text-zinc-400">Textura con corrección de perspectiva IA</p>
+        </div>
+        <p className="text-[10px] text-zinc-600 text-center max-w-[220px]">
+          Toma una foto a la lámina real. La IA detectará sus bordes y corregirá la perspectiva automáticamente.
+        </p>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!dimensionsOk}
+            className="h-8 text-xs gap-1.5 border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700 hover:text-white disabled:opacity-40"
+            onClick={() => cameraRef.current?.click()}
+          >
+            <Camera className="h-3.5 w-3.5" /> Tomar foto
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!dimensionsOk}
+            className="h-8 text-xs gap-1.5 border-zinc-600 bg-zinc-800 text-zinc-100 hover:bg-zinc-700 hover:text-white disabled:opacity-40"
+            onClick={() => galleryRef.current?.click()}
+          >
+            <ImageIcon className="h-3.5 w-3.5" /> Subir imagen
+          </Button>
+        </div>
       </div>
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={e => handleFile(e.target.files?.[0])}
-      />
-      <input
-        ref={galleryRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => handleFile(e.target.files?.[0])}
-      />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => handleFileSelection(e.target.files?.[0])} />
+      <input ref={galleryRef} type="file" accept="image/*" className="hidden"
+        onChange={e => handleFileSelection(e.target.files?.[0])} />
+
+      {/* ── Dialog for Corner Review ────────────────────────────────────────── */}
+      {cropData && phase === 'reviewing' && (
+        <PerspectiveCropDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPhase('idle');
+              setCropData(null);
+            }
+          }}
+          file={cropData.file}
+          previewUrl={cropData.previewUrl}
+          initialCorners={cropData.corners}
+          materialWidth={materialWidth}
+          materialHeight={materialHeight}
+          metadata={cropData.metadata}
+          onConfirm={(finalFile) => {
+            processAndUpload(finalFile, cropData.metadata);
+          }}
+        />
+      )}
     </div>
   );
 }

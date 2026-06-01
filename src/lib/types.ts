@@ -9,6 +9,13 @@ export interface MaterialTexture {
   originalWidth: number;    // pixels of the uploaded image
   originalHeight: number;   // pixels of the uploaded image
   uploadedAt: Timestamp;
+  metadata?: {
+    materialType?: string;
+    colorPalette?: string[];
+    pattern?: string;
+    finish?: string;
+    seamlessPrompt?: string;
+  };
 }
 
 export interface DefaultMaterial {

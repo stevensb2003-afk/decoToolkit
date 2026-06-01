@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Pencil, Trash2, Maximize, Ruler, ImageIcon, ImageOff, ChevronDown } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Pencil, Trash2, Maximize, Ruler, ImageIcon, ImageOff } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import type { DefaultMaterial, MaterialCategory, MaterialTexture } from '@/lib/types';
+import type { DefaultMaterial, MaterialCategory } from '@/lib/types';
 import { convertFromCm } from '@/lib/utils';
-import { deleteDefaultMaterial, updateDefaultMaterialTexture, deleteDefaultMaterialTexture } from '@/lib/actions';
+import { deleteDefaultMaterial } from '@/lib/actions';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +14,6 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { DefaultMaterialTextureUploader } from './DefaultMaterialTextureUploader';
 import { MaterialFormDialog } from './MaterialFormDialog';
 
 // ── Animation ─────────────────────────────────────────────────────────────────
@@ -45,10 +44,8 @@ interface MaterialCardProps {
 
 export function MaterialCard({ material, categories }: MaterialCardProps) {
   const [editOpen, setEditOpen] = useState(false);
-  const [textureExpanded, setTextureExpanded] = useState(false);
-  const [localTexture, setLocalTexture] = useState<MaterialTexture | undefined>(material.texture);
 
-  const hasTexture = Boolean(localTexture?.url);
+  const hasTexture = Boolean(material.texture?.url);
   const hasColor = Boolean(material.color);
   const categoryName = categories.find(c => c.id === material.categoryId)?.name;
 
@@ -63,31 +60,10 @@ export function MaterialCard({ material, categories }: MaterialCardProps) {
     }
   };
 
-  const handleTextureChange = async (texture: MaterialTexture | null) => {
-    setLocalTexture(texture ?? undefined);
-    try {
-      if (texture) {
-        const result = await updateDefaultMaterialTexture(material.id, texture);
-        if (!result?.success) {
-          toast({ title: 'Error', description: result?.error, variant: 'destructive' });
-          setLocalTexture(material.texture);
-        }
-      } else {
-        const result = await deleteDefaultMaterialTexture(material.id);
-        if (!result?.success) {
-          toast({ title: 'Error', description: result?.error, variant: 'destructive' });
-          setLocalTexture(material.texture);
-        }
-      }
-    } catch {
-      toast({ title: 'Error inesperado', variant: 'destructive' });
-    }
-  };
-
   // ── Header background ─────────────────────────────────────────────────────
 
   const headerStyle = hasTexture
-    ? { backgroundImage: `url(${localTexture!.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    ? { backgroundImage: `url(${material.texture!.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : hasColor
     ? { backgroundColor: material.color }
     : {};
@@ -176,52 +152,18 @@ export function MaterialCard({ material, categories }: MaterialCardProps) {
               </div>
             </div>
 
-            {/* Footer row */}
-            <div className="flex items-center justify-between mt-auto pt-1">
-              <div className="flex items-center gap-1.5">
-                {hasTexture ? (
-                  <Badge variant="outline" className="text-[10px] gap-1 border-emerald-500/40 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5">
-                    <ImageIcon className="h-2.5 w-2.5" /> Con textura
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[10px] gap-1 text-muted-foreground bg-muted/30 px-1.5 py-0.5">
-                    <ImageOff className="h-2.5 w-2.5" /> Sin textura
-                  </Badge>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-[10px] px-2 gap-1 text-muted-foreground hover:text-foreground"
-                onClick={() => setTextureExpanded(v => !v)}
-              >
-                Textura
-                <ChevronDown className={`h-3 w-3 transition-transform ${textureExpanded ? 'rotate-180' : ''}`} />
-              </Button>
-            </div>
-
-            {/* Texture expander */}
-            <AnimatePresence>
-              {textureExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <div className="pt-1 border-t border-border/40">
-                    <DefaultMaterialTextureUploader
-                      materialId={material.id}
-                      currentTexture={localTexture}
-                      materialWidth={material.width}
-                      materialHeight={material.height}
-                      onTextureChange={handleTextureChange}
-                    />
-                  </div>
-                </motion.div>
+            {/* Footer row — only the badge */}
+            <div className="flex items-center mt-auto pt-1">
+              {hasTexture ? (
+                <Badge variant="outline" className="text-[10px] gap-1 border-emerald-500/40 text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5">
+                  <ImageIcon className="h-2.5 w-2.5" /> Con textura
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] gap-1 text-muted-foreground bg-muted/30 px-1.5 py-0.5">
+                  <ImageOff className="h-2.5 w-2.5" /> Sin textura
+                </Badge>
               )}
-            </AnimatePresence>
+            </div>
           </div>
         </div>
       </motion.div>

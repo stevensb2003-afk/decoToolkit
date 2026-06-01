@@ -106,13 +106,10 @@ export function useProjectMutations(
 
   const handlePieceDelete = useCallback(async (pieceId: string) => {
     if (!project || !firestore || !placedPieces) return;
-    const pieceRef = doc(firestore, 'projects', project.id, 'placedPieces', pieceId);
     try {
-      const projectRef = doc(firestore, 'projects', project.id);
-      const [snap, projectSnap] = await Promise.all([getDoc(pieceRef), getDoc(projectRef)]);
-      if (!snap.exists()) return;
-      const piece = { id: snap.id, ...snap.data() } as PlacedPiece;
-      const currentRemnants = projectSnap.exists() ? (projectSnap.data().remnants ?? []) : [];
+      const piece = placedPieces.find(p => p.id === pieceId);
+      if (!piece) return;
+      const currentRemnants = project.remnants ?? [];
 
       const allPts = piece.fragments.flatMap(f => f.points);
       const xs = allPts.map(p => p.x), ys = allPts.map(p => p.y);
@@ -125,7 +122,9 @@ export function useProjectMutations(
       };
       const newRemnantsState = [...currentRemnants, newRemnant];
       const batch = writeBatch(firestore);
+      const pieceRef = doc(firestore, 'projects', project.id, 'placedPieces', pieceId);
       batch.delete(pieceRef);
+      const projectRef = doc(firestore, 'projects', project.id);
       batch.update(projectRef, { remnants: newRemnantsState });
       await batch.commit();
       addToHistory({
@@ -145,18 +144,14 @@ export function useProjectMutations(
   const handleBatchDeletePieces = useCallback(async (pieceIds: string[]) => {
     if (!project || !firestore || !placedPieces || !pieceIds.length) return;
     try {
-      const projectRef = doc(firestore, 'projects', project.id);
-      const projectSnap = await getDoc(projectRef);
-      const currentRemnants = projectSnap.exists() ? (projectSnap.data().remnants ?? []) : [];
+      const currentRemnants = project.remnants ?? [];
       const newRemnantsState = [...currentRemnants];
 
       const batch = writeBatch(firestore);
       const deletedPieces: PlacedPiece[] = [];
       for (const pid of pieceIds) {
-        const ref = doc(firestore, 'projects', project.id, 'placedPieces', pid);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) continue;
-        const piece = { id: snap.id, ...snap.data() } as PlacedPiece;
+        const piece = placedPieces.find(p => p.id === pid);
+        if (!piece) continue;
         deletedPieces.push(piece);
         const allPts = piece.fragments.flatMap(f => f.points);
         const xs = allPts.map(p => p.x), ys = allPts.map(p => p.y);
@@ -167,8 +162,10 @@ export function useProjectMutations(
           width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys),
           createdAt: new Date(), sourceSheetId: piece.sourceSheetId,
         });
+        const ref = doc(firestore, 'projects', project.id, 'placedPieces', pid);
         batch.delete(ref);
       }
+      const projectRef = doc(firestore, 'projects', project.id);
       batch.update(projectRef, { remnants: newRemnantsState });
       await batch.commit();
       addToHistory({

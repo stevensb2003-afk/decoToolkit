@@ -101,6 +101,7 @@ export async function createDefaultMaterial(formData: unknown) {
   if (!result.success) return { success: false, error: "Error de validación en el formulario." };
 
   const { name, width, height, color, categoryId } = result.data;
+  const texture = (formData as Record<string, unknown>)?.texture ?? null;
 
   try {
     const payload: Record<string, unknown> = {
@@ -111,6 +112,7 @@ export async function createDefaultMaterial(formData: unknown) {
     };
     if (color) payload.color = color;
     if (categoryId) payload.categoryId = categoryId;
+    if (texture) payload.texture = texture;
 
     await db.collection("defaultMaterials").add(payload);
     revalidatePath("/materials");
@@ -126,6 +128,7 @@ export async function updateDefaultMaterial(id: string, formData: unknown) {
   if (!result.success) return { success: false, error: "Error de validación en el formulario." };
 
   const { name, width, height, color, categoryId } = result.data;
+  const texture = (formData as Record<string, unknown>)?.texture ?? undefined;
 
   try {
     const payload: Record<string, unknown> = {
@@ -135,6 +138,7 @@ export async function updateDefaultMaterial(id: string, formData: unknown) {
     };
     if (color !== undefined) payload.color = color;
     if (categoryId !== undefined) payload.categoryId = categoryId;
+    if (texture !== undefined) payload.texture = texture;
 
     await db.collection("defaultMaterials").doc(id).update(payload);
     revalidatePath("/materials");

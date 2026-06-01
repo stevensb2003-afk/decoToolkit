@@ -175,8 +175,13 @@ export function useCanvasEvents(opts: UseCanvasEventsOptions) {
       if (isErasingRef.current) {
         isErasingRef.current = false;
         if (pendingErasures.current.size > 0) {
-          onBatchDeletePieces(Array.from(pendingErasures.current));
+          const idsToDelete = Array.from(pendingErasures.current);
           pendingErasures.current.clear();
+          Promise.resolve(onBatchDeletePieces(idsToDelete)).then(() => {
+            setErasedPieceIds(new Set());
+          });
+        } else {
+          setErasedPieceIds(new Set());
         }
       }
 

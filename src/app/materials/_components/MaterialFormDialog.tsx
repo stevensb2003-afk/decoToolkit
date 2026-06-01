@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { PackagePlus, Pencil, Maximize, Ruler } from 'lucide-react';
+import { PackagePlus, Pencil, Maximize, Ruler, ImageIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from '@/hooks/use-toast';
-import type { DefaultMaterial, MaterialCategory, Unit } from '@/lib/types';
+import type { DefaultMaterial, MaterialCategory, MaterialTexture, Unit } from '@/lib/types';
 import { convertFromCm } from '@/lib/utils';
 import { createDefaultMaterial, updateDefaultMaterial } from '@/lib/actions';
 import { CustomColorPicker } from '@/components/ui/CustomColorPicker';
+import { DefaultMaterialTextureUploader } from './DefaultMaterialTextureUploader';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,6 +73,7 @@ export function MaterialFormDialog({
 }: MaterialFormDialogProps) {
   const isEdit = Boolean(material);
   const [color, setColor] = useState<string>(material?.color || '#94a3b8');
+  const [localTexture, setLocalTexture] = useState<MaterialTexture | undefined>(material?.texture);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
@@ -89,6 +91,7 @@ export function MaterialFormDialog({
     if (open) {
       const c = material?.color || '#94a3b8';
       setColor(c);
+      setLocalTexture(material?.texture);
       form.reset({
         name: material?.name || '',
         categoryId: material?.categoryId || defaultCategoryId || '',
@@ -105,7 +108,18 @@ export function MaterialFormDialog({
 
   const onSubmit = async (data: FormValues) => {
     const categoryId = data.categoryId === '__none__' || !data.categoryId ? undefined : data.categoryId;
-    const payload = { ...data, color, categoryId };
+    
+    // Sanitize texture for Server Action (convert Firebase Timestamp to pure JS Date)
+    let safeTexture = localTexture ? { ...localTexture } : undefined;
+    if (safeTexture?.uploadedAt) {
+      if (typeof (safeTexture.uploadedAt as any).toDate === 'function') {
+        safeTexture.uploadedAt = (safeTexture.uploadedAt as any).toDate();
+      } else if ((safeTexture.uploadedAt as any).seconds !== undefined) {
+        safeTexture.uploadedAt = new Date((safeTexture.uploadedAt as any).seconds * 1000) as any;
+      }
+    }
+
+    const payload = { ...data, color, categoryId, texture: safeTexture };
     try {
       const result = isEdit && material
         ? await updateDefaultMaterial(material.id, payload)
@@ -121,9 +135,18 @@ export function MaterialFormDialog({
     }
   };
 
+  const widthCm = (() => {
+    const w = form.watch('width');
+    return w?.unit === 'm' ? (w.value || 0) * 100 : (w?.value || 0);
+  })();
+  const heightCm = (() => {
+    const h = form.watch('height');
+    return h?.unit === 'm' ? (h.value || 0) * 100 : (h?.value || 0);
+  })();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEdit ? <Pencil className="h-5 w-5 text-primary" /> : <PackagePlus className="h-5 w-5 text-primary" />}
@@ -232,6 +255,21 @@ export function MaterialFormDialog({
                 <CustomColorPicker value={color} onChange={c => { setColor(c); form.setValue('color', c); }} />
                 <span className="text-xs font-mono text-muted-foreground">{color.toUpperCase()}</span>
               </div>
+            </div>
+
+            {/* Texture */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5 text-primary/70" />
+                Textura
+              </label>
+              <DefaultMaterialTextureUploader
+                materialId={material?.id || 'new'}
+                currentTexture={localTexture}
+                materialWidth={widthCm}
+                materialHeight={heightCm}
+                onTextureChange={tex => setLocalTexture(tex ?? undefined)}
+              />
             </div>
           </form>
         </Form>

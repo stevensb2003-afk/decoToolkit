@@ -33,13 +33,14 @@ async function uploadToStorage(
   return { url, storagePath };
 }
 
-function buildTexture(url: string, storagePath: string): MaterialTexture {
+function buildTexture(url: string, storagePath: string, metadata?: any): MaterialTexture {
   return {
     url,
     storagePath,
     originalWidth: 0,
     originalHeight: 0,
     uploadedAt: new Date() as any,
+    ...(metadata ? { metadata } : {})
   };
 }
 
@@ -60,13 +61,19 @@ export async function uploadDefaultTextureAction(
   formData: FormData
 ): Promise<{ success: true; texture: MaterialTexture } | { success: false; error: string }> {
   const file = formData.get("file") as File | null;
+  const metadataStr = formData.get("metadata") as string | null;
+  let metadata: any = undefined;
+  if (metadataStr) {
+    try { metadata = JSON.parse(metadataStr); } catch (e) {}
+  }
+  
   const validation = validateFile(file);
   if (!validation.valid) return { success: false, error: validation.error };
 
   const storagePath = `textures/default/${materialId}_${Date.now()}.jpg`;
   try {
     const { url } = await uploadToStorage(storagePath, file!);
-    return { success: true, texture: buildTexture(url, storagePath) };
+    return { success: true, texture: buildTexture(url, storagePath, metadata) };
   } catch (error: any) {
     console.error("Error uploading default texture:", error);
     return { success: false, error: error.message || "Error al subir la textura." };
@@ -95,13 +102,19 @@ export async function uploadProjectTextureAction(
   formData: FormData
 ): Promise<{ success: true; texture: MaterialTexture } | { success: false; error: string }> {
   const file = formData.get("file") as File | null;
+  const metadataStr = formData.get("metadata") as string | null;
+  let metadata: any = undefined;
+  if (metadataStr) {
+    try { metadata = JSON.parse(metadataStr); } catch (e) {}
+  }
+  
   const validation = validateFile(file);
   if (!validation.valid) return { success: false, error: validation.error };
 
   const storagePath = `textures/projects/${projectId}/${materialId}_${Date.now()}.jpg`;
   try {
     const { url } = await uploadToStorage(storagePath, file!);
-    return { success: true, texture: buildTexture(url, storagePath) };
+    return { success: true, texture: buildTexture(url, storagePath, metadata) };
   } catch (error: any) {
     console.error("Error uploading project texture:", error);
     return { success: false, error: error.message || "Error al subir la textura." };
