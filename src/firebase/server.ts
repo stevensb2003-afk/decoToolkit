@@ -2,6 +2,7 @@
 import { initializeApp, getApps, App, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env.local
@@ -41,7 +42,9 @@ export function initializeFirebaseAdmin() {
   // calling initializeApp() without arguments will automatically use the
   // environment's service account credentials.
   const newAdminApp = initializeApp(
-    serviceAccount ? { credential: cert(serviceAccount) } : undefined,
+    serviceAccount
+      ? { credential: cert(serviceAccount), storageBucket: 'studio-8456615389-4bf0d.firebasestorage.app' }
+      : { storageBucket: 'studio-8456615389-4bf0d.firebasestorage.app' },
     ADMIN_APP_NAME
   );
   return getSdks(newAdminApp);
@@ -51,6 +54,7 @@ function getSdks(firebaseApp: App) {
   return {
     firebaseApp,
     auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp)
+    firestore: getFirestore(firebaseApp),
+    storage: getStorage(firebaseApp),
   };
 }

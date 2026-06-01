@@ -1,10 +1,21 @@
-
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Project, Surface, PlacedPiece, Obstacle, Material, Fragment, Remnant, DefaultMaterial } from "./types";
 import { calculatePolygonArea } from "./utils";
+import { drawPieceLegend } from "./pdf-report-legend";
+
+async function fetchImageAsDataUrl(url: string): Promise<string> {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
 
 export async function generateProjectPDF(data: {
     project: Project;
@@ -110,39 +121,43 @@ export async function generateProjectPDF(data: {
     doc.text("DESGLOSE DE MATERIALES", margin, y);
     y += 10;
 
-    // Report total full sheets used per material type plus remnant pieces
     const breakdownBody = project.materials.map(mat => {
-        // Count unique source sheets of this material type that were actually used
         const usedSheets = new Set<string>();
         let remnantCount = 0;
-
         placedPieces.forEach(p => {
             if (p.materialId === mat.id) {
-                if (p.source.type === "material") {
-                    usedSheets.add(p.sourceSheetId || p.id);
-                } else if (p.source.type === "remnant") {
-                    remnantCount++;
-                }
+                if (p.source.type === "material") usedSheets.add(p.sourceSheetId || p.id);
+                else if (p.source.type === "remnant") remnantCount++;
             }
         });
-
-        // Match with default material name if available
         const defaultMat = defaultMaterials?.find(dm => dm.id === mat.defaultMaterialId);
         const typePrefix = defaultMat ? defaultMat.name : (mat.defaultMaterialId === "custom" ? "Personalizado" : "Otro");
-        const fullName = `${typePrefix} - ${mat.name}`;
-
         return {
-            name: fullName,
+            id: mat.id,
+            name: `${typePrefix} - ${mat.name}`,
             dimensions: `${mat.width} x ${mat.height} cm`,
             sheetCount: usedSheets.size,
-            remnantCount: remnantCount
+            remnantCount,
+            textureUrl: mat.texture?.url,
         };
     }).filter(m => m.sheetCount > 0 || m.remnantCount > 0);
 
-    let finalBody: string[][] = [];
+    // Pre-load texture images async before rendering the table
+    const materialsWithTexture = new Map<string, string>();
+    await Promise.allSettled(
+        breakdownBody
+            .filter(m => m.textureUrl)
+            .map(async m => {
+                try {
+                    const dataUrl = await fetchImageAsDataUrl(m.textureUrl!);
+                    materialsWithTexture.set(m.id, dataUrl);
+                } catch { /* skip, fallback to color */ }
+            })
+    );
 
+    let finalBody: string[][] = [];
     if (breakdownBody.length === 0) {
-        finalBody = [["Ningún material colocado aún", "-", "-"]];
+        finalBody = [["", "Ningún material colocado aún", "-", "-"]];
     } else {
         finalBody = breakdownBody.map(m => {
             let usageText = "";
@@ -153,20 +168,35 @@ export async function generateProjectPDF(data: {
             } else if (m.remnantCount > 0) {
                 usageText = `${m.remnantCount} Pieza(s) de Retazo (0 Planchas nuevas)`;
             }
-
-            return [
-                m.name,
-                m.dimensions,
-                usageText
-            ];
+            return [m.id, m.name, m.dimensions, usageText];
         });
     }
 
     autoTable(doc, {
         startY: y,
-        head: [["Material", "Dimensiones (Origen)", "Uso Registrado"]],
+        head: [["", "Material", "Dimensiones (Origen)", "Uso Registrado"]],
         body: finalBody,
-        theme: "grid",
+        columnStyles: { 0: { cellWidth: 22, minCellHeight: 22 } },
+        didDrawCell: (data: any) => {
+            if (data.section === 'body' && data.column.index === 0) {
+                const matId = data.cell.raw as string;
+                const imgDataUrl = materialsWithTexture.get(matId);
+                const mat = project.materials.find(m => m.id === matId);
+                const cellX = data.cell.x + 2;
+                const cellY = data.cell.y + 2;
+                const size = Math.min(data.cell.width - 4, data.cell.height - 4);
+                if (imgDataUrl) {
+                    doc.addImage(imgDataUrl, 'JPEG', cellX, cellY, size, size);
+                } else if (mat?.color && mat.color.startsWith('#')) {
+                    const r = parseInt(mat.color.slice(1, 3), 16);
+                    const g = parseInt(mat.color.slice(3, 5), 16);
+                    const b = parseInt(mat.color.slice(5, 7), 16);
+                    doc.setFillColor(r, g, b);
+                    doc.rect(cellX, cellY, size, size, 'F');
+                }
+            }
+        },
+        theme: 'grid',
         headStyles: { fillColor: [51, 65, 85] },
         margin: { left: margin, right: margin },
     });
@@ -293,18 +323,83 @@ export async function generateProjectPDF(data: {
                 (doc as any).setLineDash([1, 1], 0); // Dashed lines for technical look
             }
 
+            const textureDataUrl = material?.texture?.url ? materialsWithTexture.get(material.id) : undefined;
+            const useTexture = textureDataUrl && material && material.width > 0 && material.height > 0;
+
+            let cx = 0, cy = 0, cos = 1, sin = 0, pw = 0, ph = 0;
+            let startGridX = 0, endGridX = 0, startGridY = 0, endGridY = 0;
+
+            if (useTexture) {
+                const allPoints = piece.fragments.flatMap(f => f.points);
+                if (allPoints.length > 0) {
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    allPoints.forEach(p => {
+                        if (p.x < minX) minX = p.x;
+                        if (p.x > maxX) maxX = p.x;
+                        if (p.y < minY) minY = p.y;
+                        if (p.y > maxY) maxY = p.y;
+                    });
+                    
+                    cx = drawX + ((minX + maxX) / 2) * scale;
+                    cy = drawY + ((minY + maxY) / 2) * scale;
+
+                    const rad = (piece.rotation || 0) * Math.PI / 180;
+                    cos = Math.cos(rad);
+                    sin = Math.sin(rad);
+
+                    pw = material.width * scale;
+                    ph = material.height * scale;
+
+                    const radiusX = (maxX - minX) / 2;
+                    const radiusY = (maxY - minY) / 2;
+                    const maxRadius = Math.sqrt(radiusX*radiusX + radiusY*radiusY);
+
+                    // Expand the grid enough to cover the rotated piece
+                    startGridX = Math.floor(((cx - maxRadius * scale) - drawX) / pw) - 1;
+                    endGridX = Math.ceil(((cx + maxRadius * scale) - drawX) / pw) + 1;
+                    startGridY = Math.floor(((cy - maxRadius * scale) - drawY) / ph) - 1;
+                    endGridY = Math.ceil(((cy + maxRadius * scale) - drawY) / ph) + 1;
+                }
+            }
+
             piece.fragments.forEach(frag => {
                 if (frag.points.length < 3) return;
                 const first = frag.points[0];
 
-                // Draw path for filling
+                // Build path
                 doc.moveTo(drawX + first.x * scale, drawY + first.y * scale);
                 for (let i = 1; i < frag.points.length; i++) {
                     const pt = frag.points[i];
                     doc.lineTo(drawX + pt.x * scale, drawY + pt.y * scale);
                 }
                 doc.lineTo(drawX + first.x * scale, drawY + first.y * scale);
-                (doc as any).fill();
+
+                if (useTexture && textureDataUrl && pw > 0 && ph > 0) {
+                    (doc as any).saveGraphicsState();
+                    (doc as any).clip(); // Mask to the piece fragment
+                    (doc as any).discardPath(); // End path for the clip operator
+                    
+                    // Tile the image to fill the bounding box, rotating each tile
+                    for (let col = startGridX; col <= endGridX; col++) {
+                        for (let row = startGridY; row <= endGridY; row++) {
+                            const tileX = drawX + col * pw;
+                            const tileY = drawY + row * ph;
+                            
+                            const dx = tileX - cx;
+                            const dy = tileY - cy;
+                            
+                            const rotatedX = cx + dx * cos - dy * sin;
+                            const rotatedY = cy + dx * sin + dy * cos;
+
+                            // addImage(..., angle) internally rotates around the (x,y) passed
+                            doc.addImage(textureDataUrl, 'JPEG', rotatedX, rotatedY, pw, ph, material.id, 'FAST', piece.rotation || 0);
+                        }
+                    }
+
+                    (doc as any).restoreGraphicsState();
+                } else {
+                    (doc as any).fill();
+                }
 
                 // Redraw path for stroking (required by jsPDF to avoid path consumption)
                 doc.moveTo(drawX + first.x * scale, drawY + first.y * scale);
@@ -478,191 +573,7 @@ export async function generateProjectPDF(data: {
         doc.text(`${heightMeters} m`, drawX - 2, drawY + (surface.height * scale) / 2, { angle: 90, align: "center" });
 
         // 5. Detailed Piece Legend (Individual Drawings)
-        let legendY = drawY + (surface.height * scale) + 20;
-        doc.setFontSize(12);
-        doc.setTextColor(15, 23, 42);
-        doc.setFont("helvetica", "bold");
-        doc.text("GUÍA DE CORTE - DETALLE DE PIEZAS", margin, legendY);
-
-        legendY += 10;
-
-        if (pieceGroups.length > 0) {
-            let currentX = margin;
-            let currentRowMaxHeight = 0;
-            const cardPadding = 10;
-
-            pieceGroups.forEach((group, idx) => {
-                const piece = group.piece;
-                const material = project.materials.find(m => m.id === piece.materialId);
-
-                // Calculate flexible card size based on piece aspect ratio
-                let cardWidth = 45;
-                let cardHeight = 45;
-                if (piece.width > 0 && piece.height > 0) {
-                    const ratio = piece.width / piece.height;
-
-                    if (ratio > 1) {
-                        // Wide piece: Minimum height 45, width expands proportionally up to 90
-                        cardWidth = Math.min(45 * ratio, 90);
-                        cardHeight = Math.max(45, Math.min(45 * (1 / ratio), 90)); // Allow height to slightly grow if it's very huge overall, but base is 45
-                    } else {
-                        // Tall piece: Minimum width 45, height expands proportionally up to 90
-                        cardHeight = Math.min(45 / ratio, 90);
-                        cardWidth = Math.max(45, Math.min(45 * ratio, 90));
-                    }
-                }
-
-                // Ensure absolute minimums so headers and labels never overflow
-                cardWidth = Math.max(45, Math.min(cardWidth, 120));
-                cardHeight = Math.max(45, Math.min(cardHeight, 120));
-
-                // Wrap to next row if needed
-                if (currentX > margin && currentX + cardWidth > pageWidth - margin) {
-                    currentX = margin;
-                    legendY += currentRowMaxHeight + 15;
-                    currentRowMaxHeight = 0;
-                }
-
-                // Check for page overflow
-                if (legendY + cardHeight > doc.internal.pageSize.getHeight() - 20) {
-                    doc.addPage();
-                    legendY = 20;
-                    currentX = margin;
-                    currentRowMaxHeight = 0;
-                }
-
-                currentRowMaxHeight = Math.max(currentRowMaxHeight, cardHeight);
-
-                // Draw Card Background
-                doc.setDrawColor(230, 230, 230);
-                doc.setLineWidth(0.1);
-                doc.rect(currentX, legendY, cardWidth, cardHeight);
-
-                // ID & Count (Number inside a circle)
-                const circleX = currentX + 5;
-                const circleY = legendY + 4.5;
-
-                doc.setFillColor(15, 23, 42);
-                doc.circle(circleX, circleY, 3, "F");
-
-                doc.setFontSize(9);
-                doc.setTextColor(255, 255, 255);
-                doc.setFont("helvetica", "bold");
-                doc.text(`${group.typeId!}`, circleX, circleY + 1.1, { align: "center" }); // Center text in circle
-
-                // Count
-                doc.setFontSize(10);
-                doc.setTextColor(15, 23, 42);
-                doc.text(`(x${group.count})`, circleX + 4, circleY + 1.1);
-
-                doc.setFontSize(6);
-                doc.setFont("helvetica", "normal");
-                doc.text(material?.name || "Material", currentX + 2, legendY + 10, { maxWidth: cardWidth - 4 });
-
-                // Draw Individual Piece centered in the remaining card space
-                const drawAreaY = legendY + 12;
-                const drawAreaH = cardHeight - 15;
-                const drawAreaW = cardWidth - 4;
-
-                // Add minimal optimal padding (7mm per side) so outer dimension labels fit perfectly without squishing the piece
-                const labelPaddingX = 14;
-                const labelPaddingY = 14;
-                const scaleAreaW = Math.max(10, drawAreaW - labelPaddingX);
-                const scaleAreaH = Math.max(10, drawAreaH - labelPaddingY);
-
-                const pScale = Math.min(scaleAreaW / piece.width, scaleAreaH / piece.height);
-                const pStartX = currentX + 2 + (drawAreaW - piece.width * pScale) / 2;
-                const pStartY = drawAreaY + (drawAreaH - piece.height * pScale) / 2;
-
-                // Set Material Color
-                let color = [200, 230, 255];
-                if (material?.color && material.color.startsWith('#')) {
-                    const r = parseInt(material.color.slice(1, 3), 16);
-                    const g = parseInt(material.color.slice(3, 5), 16);
-                    const b = parseInt(material.color.slice(5, 7), 16);
-                    color = [r, g, b];
-                }
-                doc.setFillColor(color[0], color[1], color[2]);
-                doc.setDrawColor(0, 0, 0);
-                doc.setLineWidth(0.2);
-
-                piece.fragments.forEach(frag => {
-                    if (frag.points.length < 3) return;
-                    const first = frag.points[0];
-                    const pieceOriginX = piece.x - piece.width / 2;
-                    const pieceOriginY = piece.y - piece.height / 2;
-
-                    // Removed centroid calculation as it fails for non-convex (concave) shapes like L-pieces.
-
-                    doc.moveTo(pStartX + (first.x - pieceOriginX) * pScale, pStartY + (first.y - pieceOriginY) * pScale);
-                    for (let i = 1; i < frag.points.length; i++) {
-                        const pt = frag.points[i];
-                        doc.lineTo(pStartX + (pt.x - pieceOriginX) * pScale, pStartY + (pt.y - pieceOriginY) * pScale);
-                    }
-                    doc.lineTo(pStartX + (first.x - pieceOriginX) * pScale, pStartY + (first.y - pieceOriginY) * pScale);
-                    (doc as any).fill();
-                    (doc as any).stroke();
-
-                    // Segment dimensions logic - GUARANTEED EXTERNAL LABELS
-                    doc.setFontSize(7);
-                    doc.setTextColor(30, 41, 59);
-
-                    for (let i = 0; i < frag.points.length; i++) {
-                        const p1 = frag.points[i];
-                        const p2 = frag.points[(i + 1) % frag.points.length];
-                        const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-
-                        if (dist > 1.5) {
-                            // Midpoint in local coordinates
-                            const midLocalX = (p1.x + p2.x) / 2;
-                            const midLocalY = (p1.y + p2.y) / 2;
-
-                            // Edge vector mapping
-                            const dx = p2.x - p1.x;
-                            const dy = p2.y - p1.y;
-
-                            // Perpendicular vector (candidate normal)
-                            let nx = -dy / dist;
-                            let ny = dx / dist;
-
-                            // Test if this normal points inside or outside the polygon
-                            // We push a test point slightly along the normal
-                            const testX = midLocalX + nx * 0.1;
-                            const testY = midLocalY + ny * 0.1;
-
-                            // Point in polygon Ray-Casting algorithm
-                            let inside = false;
-                            for (let j = 0, k = frag.points.length - 1; j < frag.points.length; k = j++) {
-                                const vj = frag.points[j];
-                                const vk = frag.points[k];
-                                const intersect = ((vj.y > testY) !== (vk.y > testY))
-                                    && (testX < (vk.x - vj.x) * (testY - vj.y) / (vk.y - vj.y) + vj.x);
-                                if (intersect) inside = !inside;
-                            }
-
-                            // If the test point is inside, the outward normal is the opposite direction!
-                            if (inside) {
-                                nx = -nx;
-                                ny = -ny;
-                            }
-
-                            // Offset in mm (distance from edge to text)
-                            const offset = 4;
-                            const labelX = pStartX + (midLocalX - pieceOriginX) * pScale + nx * offset;
-                            const labelY = pStartY + (midLocalY - pieceOriginY) * pScale + ny * offset;
-
-                            doc.text(`${Math.round(dist)}`, labelX, labelY, { align: "center", baseline: "middle" });
-                        }
-                    }
-                });
-
-                currentX += cardWidth + cardPadding;
-            });
-        } else {
-            doc.setFontSize(9);
-            doc.setFont("helvetica", "italic");
-            doc.text("No hay piezas colocadas aún.", margin, legendY + 5);
-        }
+        drawPieceLegend({ doc, pieceGroups, project, margin, drawY, surfaceHeight: surface.height, scale });
     });
 
     // --- Footer and Square Logo on all pages ---

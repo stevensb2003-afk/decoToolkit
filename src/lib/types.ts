@@ -3,12 +3,32 @@ import type { Timestamp, FieldValue } from "firebase/firestore";
 
 export type Unit = "m" | "cm";
 
+export interface MaterialTexture {
+  url: string;              // Firebase Storage download URL
+  storagePath: string;      // e.g. textures/default/{id}.jpg
+  originalWidth: number;    // pixels of the uploaded image
+  originalHeight: number;   // pixels of the uploaded image
+  uploadedAt: Timestamp;
+}
+
 export interface DefaultMaterial {
   id: string;
   name: string;
-  width: number; // stored in cm
-  height: number; // stored in cm
+  width: number;            // stored in cm
+  height: number;           // stored in cm
   createdAt: Timestamp;
+  color?: string;           // HEX — shown in canvas/PDF when no texture
+  categoryId?: string;      // ref to materialCategories/{id}
+  texture?: MaterialTexture;
+}
+
+export interface MaterialCategory {
+  id: string;
+  name: string;             // e.g. "WPC 19mm", "Granito Premium"
+  description?: string;
+  order: number;            // display order
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
 }
 
 export interface UserProfile {
@@ -43,9 +63,10 @@ export interface Material {
   name: string;
   height: number; // Stored in cm
   width: number; // Stored in cm
-  color: string;
+  color: string;  // Hex color — used when no texture is set
   installationOrientation: "Vertical" | "Horizontal";
   defaultMaterialId?: string;
+  texture?: MaterialTexture; // optional: overrides color in canvas/PDF
 }
 
 export interface Remnant {

@@ -1,21 +1,21 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { getFirestore, doc, writeBatch } from 'firebase/firestore';
+import { Pencil, Plus, Layers } from 'lucide-react';
+import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { initializeFirebaseClient } from '@/firebase';
 import { cleanPayload } from '../../_utils/clean-payload';
 import type { Project, Surface, Material } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { serverTimestamp } from 'firebase/firestore';
+import { SurfaceRow, MaterialRow } from './EditProjectSheet.rows';
+import { CatalogMaterialPicker, defaultMaterialToProjectMaterial } from './CatalogMaterialPicker';
 
 // ---- Types ----
 interface EditProjectSheetProps {
@@ -29,9 +29,10 @@ function emptyMaterial(): Material {
     id: uuidv4(),
     name: '',
     width: 120,
-    height: 240,
+    height: 244,
     color: '#94a3b8',
     installationOrientation: 'Vertical',
+    defaultMaterialId: 'custom',
   };
 }
 
@@ -39,122 +40,12 @@ function emptySurface(): Surface {
   return { id: uuidv4(), name: '', width: 100, height: 100 };
 }
 
-// ---- Sub-components ----
-function SurfaceRow({
-  surface,
-  onChange,
-  onDelete,
-}: {
-  surface: Surface;
-  onChange: (s: Surface) => void;
-  onDelete: () => void;
-}) {
-  const [wStr, setWStr] = useState((surface.width / 100).toString());
-  const [hStr, setHStr] = useState((surface.height / 100).toString());
 
-  useEffect(() => { setWStr((surface.width / 100).toString()); }, [surface.width]);
-  useEffect(() => { setHStr((surface.height / 100).toString()); }, [surface.height]);
-
-  return (
-    <div className="grid grid-cols-[1fr_80px_80px_32px] gap-2 items-center">
-      <Input
-        placeholder="Nombre"
-        value={surface.name}
-        onChange={e => onChange({ ...surface, name: e.target.value })}
-        className="h-8 text-xs"
-      />
-      <Input
-        type="number" step="0.01" placeholder="Ancho (m)"
-        value={wStr}
-        onChange={e => setWStr(e.target.value)}
-        onBlur={e => {
-           const num = Number(e.target.value);
-           if (!isNaN(num)) onChange({ ...surface, width: Math.round(num * 100) });
-           else setWStr((surface.width / 100).toString());
-        }}
-        className="h-8 text-xs"
-      />
-      <Input
-        type="number" step="0.01" placeholder="Alto (m)"
-        value={hStr}
-        onChange={e => setHStr(e.target.value)}
-        onBlur={e => {
-           const num = Number(e.target.value);
-           if (!isNaN(num)) onChange({ ...surface, height: Math.round(num * 100) });
-           else setHStr((surface.height / 100).toString());
-        }}
-        className="h-8 text-xs"
-      />
-      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDelete}>
-        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-      </Button>
-    </div>
-  );
-}
-
-function MaterialRow({
-  material,
-  onChange,
-  onDelete,
-}: {
-  material: Material;
-  onChange: (m: Material) => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="space-y-1.5 p-2 rounded-md border border-border bg-muted/30">
-      <div className="flex gap-2">
-        <Input
-          placeholder="Nombre del material"
-          value={material.name}
-          onChange={e => onChange({ ...material, name: e.target.value })}
-          className="h-8 text-xs flex-1"
-        />
-        <input
-          type="color"
-          value={material.color}
-          onChange={e => onChange({ ...material, color: e.target.value })}
-          className="h-8 w-10 rounded border border-border cursor-pointer bg-transparent"
-          title="Color"
-        />
-        <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={onDelete}>
-          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-        </Button>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div className="space-y-0.5">
-          <Label className="text-[10px] text-muted-foreground">Ancho (cm)</Label>
-          <Input type="number" value={material.width}
-            onChange={e => onChange({ ...material, width: Number(e.target.value) })}
-            className="h-7 text-xs" />
-        </div>
-        <div className="space-y-0.5">
-          <Label className="text-[10px] text-muted-foreground">Alto (cm)</Label>
-          <Input type="number" value={material.height}
-            onChange={e => onChange({ ...material, height: Number(e.target.value) })}
-            className="h-7 text-xs" />
-        </div>
-        <div className="space-y-0.5">
-          <Label className="text-[10px] text-muted-foreground">Orientación</Label>
-          <Select value={material.installationOrientation}
-            onValueChange={v => onChange({ ...material, installationOrientation: v as Material['installationOrientation'] })}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Vertical" className="text-xs">Vertical</SelectItem>
-              <SelectItem value="Horizontal" className="text-xs">Horizontal</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ---- Main Component ----
 export function EditProjectSheet({ project, surfaces: initialSurfaces }: EditProjectSheetProps) {
   const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [projectName, setProjectName] = useState(project.projectName);
   const [clientName, setClientName] = useState(project.clientName ?? '');
   const [clientPhone, setClientPhone] = useState(project.clientPhone ?? '');
@@ -268,20 +159,40 @@ export function EditProjectSheet({ project, surfaces: initialSurfaces }: EditPro
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Materiales</p>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1"
-                  onClick={() => setMaterials(p => [...p, emptyMaterial()])}>
-                  <Plus className="h-3 w-3" /> Agregar
-                </Button>
+                <div className="flex gap-1">
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-border/60 hover:!bg-primary/10 hover:!text-primary hover:!border-primary/40"
+                    onClick={() => setPickerOpen(true)}>
+                    <Layers className="h-3 w-3" /> Del catálogo
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:!bg-muted/40 hover:!text-foreground"
+                    title="Material personalizado"
+                    onClick={() => setMaterials(p => [...p, emptyMaterial()])}>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 {materials.map(m => (
-                  <MaterialRow key={m.id} material={m}
+                  <MaterialRow key={m.id} material={m} projectId={project.id}
                     onChange={updated => setMaterials(p => p.map(x => x.id === updated.id ? updated : x))}
                     onDelete={() => setMaterials(p => p.filter(x => x.id !== m.id))}
                   />
                 ))}
               </div>
             </section>
+
+            <CatalogMaterialPicker
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              existingMaterialDefaultIds={materials
+                .map(m => m.defaultMaterialId)
+                .filter((id): id is string => !!id && id !== 'custom')}
+              onConfirm={(selectedDefaults) => {
+                const newMaterials = selectedDefaults.map(defaultMaterialToProjectMaterial);
+                setMaterials(prev => [...prev, ...newMaterials]);
+                setPickerOpen(false);
+              }}
+            />
             <div className="h-4" />
           </div>
         </ScrollArea>

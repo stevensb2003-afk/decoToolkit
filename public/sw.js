@@ -39,7 +39,7 @@ if (!self.define) {
       .then(() => {
         let promise = registry[uri];
         if (!promise) {
-          throw new Error(`Module ${uri} didn’t register its module`);
+          throw new Error(`Module ${uri} didn't register its module`);
         }
         return promise;
       })
@@ -72,14 +72,20 @@ define(['./workbox-7144475a'], (function (workbox) { 'use strict';
   importScripts();
   self.skipWaiting();
   workbox.clientsClaim();
+
+  // Cache start URL with NetworkFirst — fixed cacheWillUpdate plugin
   workbox.registerRoute("/", new workbox.NetworkFirst({
     "cacheName": "start-url",
     plugins: [{
-      cacheWillUpdate: function (_) {
-        return _ref.apply(this, arguments);
+      cacheWillUpdate: async ({ response }) => {
+        if (response && response.status === 200) return response;
+        return null;
       }
     }]
   }), 'GET');
+
+  // All other GET requests: NetworkOnly (no caching), so Server Actions and
+  // RSC payloads are never intercepted or blocked by the Service Worker.
   workbox.registerRoute(/.*/i, new workbox.NetworkOnly({
     "cacheName": "dev",
     plugins: []

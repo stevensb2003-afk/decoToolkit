@@ -100,7 +100,7 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-card px-4 md:px-6 z-50">
+    <header className="sticky top-0 flex w-full h-16 shrink-0 items-center gap-4 border-b bg-card px-4 md:px-6 z-50">
       {/* Left side: Logo and Title */}
       <Link
         href="/"

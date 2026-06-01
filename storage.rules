@@ -1,8 +1,41 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
+    // Helper: validate image content type and max 15MB
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*')
+          && request.resource.size <= 15 * 1024 * 1024;
+    }
+
+    // Helper: check if caller is admin via Firestore
+    function isAdmin() {
+      return request.auth != null
+          && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Default materials textures: read for all authenticated, write only admins
+    match /textures/default/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin() && isValidImage();
+      allow delete: if isAdmin();
+    }
+
+    // Project-specific material textures: scoped to the project owner
+    // Path: textures/projects/{projectId}/{fileName}
+    match /textures/projects/{projectId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+          && isValidImage()
+          && firestore.get(/databases/(default)/documents/projects/$(projectId)).data.userId == request.auth.uid;
+      allow delete: if request.auth != null
+          && firestore.get(/databases/(default)/documents/projects/$(projectId)).data.userId == request.auth.uid;
+    }
+
+    // Block everything else
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
+

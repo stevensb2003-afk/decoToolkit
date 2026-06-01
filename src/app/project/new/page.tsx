@@ -1,27 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useFieldArray, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import {
   Select,
   SelectContent,
@@ -29,21 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
 import {
   useUser,
   useFirestore,
   useCollection,
   useMemoFirebase,
 } from "@/firebase";
-import type {
-  DefaultMaterial,
-  Unit,
-  Project,
-  Material,
-  UserProfile,
-} from "@/lib/types";
 import {
   collection,
   query,
@@ -54,766 +31,515 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import {
-  PlusCircle,
-  Trash2,
-  Loader,
+  Layers,
+  Plus,
+  Loader2,
   User as UserIcon,
-  Check,
+  Package,
+  LayoutGrid,
+  ArrowRight,
+  Sparkles,
+  Phone,
+  Building2,
 } from "lucide-react";
-import { convertToCm, convertFromCm, cn } from "@/lib/utils";
+import { convertToCm } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CatalogMaterialPicker } from "@/app/project/[id]/_components/sheets/CatalogMaterialPicker";
+import { NewMaterialCard } from "./_components/NewMaterialCard";
+import { NewSurfaceRow } from "./_components/NewSurfaceRow";
+import type { DefaultMaterial, Material, Project, UserProfile } from "@/lib/types";
+import { useEffect } from "react";
 
-// --- Form Schemas ---
-const DimensionInputSchema = z.object({
-  value: z.coerce.number().positive("El valor debe ser positivo"),
-  unit: z.enum(["m", "cm"]),
-});
+// ── Types ────────────────────────────────────────────────────────────────────
+interface SurfaceFormValue {
+  id: string;
+  name: string;
+  width: { value: number; unit: "m" | "cm" };
+  height: { value: number; unit: "m" | "cm" };
+}
 
-const MaterialSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1, "El nombre del material es requerido"),
-  width: DimensionInputSchema,
-  height: DimensionInputSchema,
-  installationOrientation: z.enum(["Vertical", "Horizontal"]),
-  defaultMaterialId: z.string().optional(),
-  color: z.string().min(1, "El color es requerido"),
-});
-
-const SurfaceSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1, "El nombre de la superficie es requerido"),
-  width: DimensionInputSchema,
-  height: DimensionInputSchema,
-});
-
-const ProjectFormSchema = z.object({
-  projectName: z.string().min(1, "El nombre del proyecto es requerido"),
-  clientName: z.string().optional(),
-  clientPhone: z.string().optional(),
-  userId: z.string().min(1, "El propietario del proyecto es requerido."),
-  materials: z.array(MaterialSchema).min(1, "Se requiere al menos un material"),
-  surfaces: z
-    .array(SurfaceSchema)
-    .min(1, "Se requiere al menos una superficie"),
-});
-
-type ProjectFormValues = z.infer<typeof ProjectFormSchema>;
-
-// --- Default Values ---
-const defaultColors = [
-  "#A67B5B",
-  "#D2B48C",
-  "#C0C0C0",
-  "#808080",
-  "#F5DEB3",
-  "#36454F",
-];
-
-const createDefaultMaterial = () => ({
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const createCustomMaterial = (): Material => ({
   id: crypto.randomUUID(),
   name: "",
-  width: { value: 0, unit: "m" as Unit },
-  height: { value: 0, unit: "m" as Unit },
-  installationOrientation: "Vertical" as "Vertical" | "Horizontal",
+  width: 122,
+  height: 244,
+  color: "#C4956A",
+  installationOrientation: "Vertical",
   defaultMaterialId: "custom",
-  color: defaultColors[0],
 });
 
-const createDefaultSurface = () => ({
+const createSurface = (): SurfaceFormValue => ({
   id: crypto.randomUUID(),
   name: "",
-  width: { value: 0, unit: "m" as Unit },
-  height: { value: 0, unit: "m" as Unit },
+  width: { value: 0, unit: "m" },
+  height: { value: 0, unit: "m" },
 });
 
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function CreateProjectPage() {
   const router = useRouter();
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
 
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [projectName, setProjectName] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [assignedUserId, setAssignedUserId] = useState<string>("");
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [surfaces, setSurfaces] = useState<SurfaceFormValue[]>([createSurface()]);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
-  const defaultMaterialsQuery = useMemoFirebase(
+  // ── Firebase data ──────────────────────────────────────────────────────────
+  const materialsQuery = useMemoFirebase(
     () => (firestore ? query(collection(firestore, "defaultMaterials")) : null),
-    [firestore],
+    [firestore]
   );
-
-  const { data: defaultMaterials, isLoading: materialsLoading } =
-    useCollection<DefaultMaterial>(defaultMaterialsQuery);
-
-  const form = useForm<ProjectFormValues>({
-    resolver: zodResolver(ProjectFormSchema),
-    defaultValues: {
-      projectName: "",
-      clientName: "",
-      clientPhone: "",
-      userId: user?.uid || undefined,
-      materials: [createDefaultMaterial()],
-      surfaces: [createDefaultSurface()],
-    },
-  });
-
-  const {
-    fields: materialFields,
-    append: appendMaterial,
-    remove: removeMaterial,
-  } = useFieldArray({
-    control: form.control,
-    name: "materials",
-  });
-  const {
-    fields: surfaceFields,
-    append: appendSurface,
-    remove: removeSurface,
-  } = useFieldArray({
-    control: form.control,
-    name: "surfaces",
-  });
+  const { isLoading: materialsLoading } =
+    useCollection<DefaultMaterial>(materialsQuery);
 
   useEffect(() => {
     if (!firestore) return;
-    const fetchUsers = async () => {
+    const fetch = async () => {
       setUsersLoading(true);
       try {
-        const usersCollection = collection(firestore, "users");
-        const usersSnapshot = await getDocs(usersCollection);
-        const usersList = usersSnapshot.docs.map(
-          (doc) => ({ ...doc.data(), id: doc.id }) as UserProfile,
-        );
-        setAllUsers(usersList);
-      } catch (error) {
-        console.error("Error fetching users:", error);
-        toast({
-          title: "Error",
-          description: "No se pudo cargar la lista de usuarios.",
-          variant: "destructive",
-        });
+        const snap = await getDocs(collection(firestore, "users"));
+        setAllUsers(snap.docs.map((d) => ({ ...d.data(), id: d.id }) as UserProfile));
+      } catch {
+        toast({ title: "Error", description: "No se cargó la lista de usuarios.", variant: "destructive" });
       } finally {
         setUsersLoading(false);
       }
     };
-    fetchUsers();
+    fetch();
   }, [firestore, toast]);
 
   useEffect(() => {
-    if (user && !form.getValues("userId")) {
-      form.setValue("userId", user.uid);
-    }
-  }, [user, form]);
+    if (user && !assignedUserId) setAssignedUserId(user.uid);
+  }, [user, assignedUserId]);
 
-  const onSubmit = async (data: ProjectFormValues) => {
-    if (!user || !firestore) {
-      toast({
-        title: "Error de Autenticación",
-        description: "Debes iniciar sesión.",
-        variant: "destructive",
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleCatalogConfirm = useCallback(
+    (selected: DefaultMaterial[]) => {
+      setMaterials((prev) => {
+        const existingIds = new Set(prev.map((m) => m.defaultMaterialId));
+        const incoming = selected
+          .filter((dm) => !existingIds.has(dm.id))
+          .slice(0, 6 - prev.length)
+          .map((dm) => ({
+            id: crypto.randomUUID(),
+            name: dm.name,
+            width: dm.width,
+            height: dm.height,
+            color: dm.color ?? "#94a3b8",
+            installationOrientation: "Vertical" as const,
+            defaultMaterialId: dm.id,
+            texture: dm.texture,
+          }));
+        return [...prev, ...incoming].slice(0, 6);
       });
+      setCatalogOpen(false);
+    },
+    []
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !firestore) return;
+    if (!projectName.trim()) {
+      toast({ title: "Nombre requerido", description: "Ingresa un nombre para el proyecto.", variant: "destructive" });
       return;
     }
+    if (materials.length === 0) {
+      toast({ title: "Sin materiales", description: "Agrega al menos un material.", variant: "destructive" });
+      return;
+    }
+    if (!surfaces.some((s) => s.name.trim())) {
+      toast({ title: "Sin superficies", description: "Define al menos una superficie.", variant: "destructive" });
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const processedMaterials: Material[] = data.materials.map((m) => ({
+      const processedMaterials: Material[] = materials.map((m) => ({
         ...m,
-        width: convertToCm(m.width.value, m.width.unit),
-        height: convertToCm(m.height.value, m.height.unit),
+        width: typeof m.width === "number" ? m.width : convertToCm(m.width as any, "cm"),
+        height: typeof m.height === "number" ? m.height : convertToCm(m.height as any, "cm"),
       }));
 
-      const newProjectData: Omit<Project, "id" | "surfaces"> = {
-        userId: data.userId,
-        projectName: data.projectName,
-        clientName: data.clientName || "",
-        clientPhone: data.clientPhone || "",
+      const projectData: Omit<Project, "id" | "surfaces"> = {
+        userId: assignedUserId || user.uid,
+        projectName: projectName.trim(),
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
         materials: processedMaterials,
         remnants: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
-      const projectDocRef = await addDoc(
-        collection(firestore, "projects"),
-        newProjectData,
-      );
+      const projectRef = await addDoc(collection(firestore, "projects"), projectData);
 
       const batch = writeBatch(firestore);
-      for (const surface of data.surfaces) {
-        const surfaceDocRef = doc(
-          collection(firestore, "projects", projectDocRef.id, "surfaces"),
-        );
-        batch.set(surfaceDocRef, {
-          name: surface.name,
-          width: convertToCm(surface.width.value, surface.width.unit),
-          height: convertToCm(surface.height.value, surface.height.unit),
+      surfaces.filter((s) => s.name.trim()).forEach((s) => {
+        const ref = doc(collection(firestore, "projects", projectRef.id, "surfaces"));
+        batch.set(ref, {
+          name: s.name.trim(),
+          width: convertToCm(s.width.value, s.width.unit),
+          height: convertToCm(s.height.value, s.height.unit),
         });
-      }
-
+      });
       await batch.commit();
-      toast({
-        title: "Proyecto Creado",
-        description: "El nuevo proyecto ha sido creado exitosamente.",
-      });
-      router.push(`/project/${projectDocRef.id}`);
-    } catch (error: any) {
-      console.error("Error creating project:", error);
-      toast({
-        title: "Error al crear el proyecto",
-        description: error.message || "Ocurrió un error inesperado.",
-        variant: "destructive",
-      });
+
+      toast({ title: "¡Proyecto creado!", description: "Redirigiendo al editor…" });
+      router.push(`/project/${projectRef.id}`);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message ?? "Ocurrió un error inesperado.", variant: "destructive" });
+      setSubmitting(false);
     }
   };
 
-  const handleDefaultMaterialChange = (materialId: string, index: number) => {
-    const selectedMaterial = defaultMaterials?.find((m) => m.id === materialId);
-    form.setValue(`materials.${index}.defaultMaterialId`, materialId);
-    if (selectedMaterial) {
-      const currentWidthUnit = form.getValues(`materials.${index}.width.unit`);
-      const currentHeightUnit = form.getValues(
-        `materials.${index}.height.unit`,
-      );
-      form.setValue(
-        `materials.${index}.width.value`,
-        convertFromCm(selectedMaterial.width, currentWidthUnit),
-      );
-      form.setValue(
-        `materials.${index}.height.value`,
-        convertFromCm(selectedMaterial.height, currentHeightUnit),
-      );
-    }
-  };
-
-  const isLoading = isUserLoading || materialsLoading || usersLoading;
-
-  if (isLoading) {
+  if (isUserLoading || materialsLoading || usersLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </main>
       </div>
     );
   }
 
+  const canAddMore = materials.length < 6;
+  const existingDefaultIds = materials
+    .map((m) => m.defaultMaterialId)
+    .filter((id): id is string => !!id && id !== "custom");
+
   return (
-    <>
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-background via-background to-muted/20">
       <Header />
       <main className="flex-1 overflow-y-auto">
-        <div className="container mx-auto max-w-7xl p-4 md:p-8 lg:p-12">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <header className="mb-8">
-                <h1 className="text-3xl font-bold font-headline">
-                  Crear Nuevo Proyecto
-                </h1>
-                <p className="text-muted-foreground">
-                  Define los parámetros de tu proyecto para generar un plano de
-                  corte.
-                </p>
-              </header>
+        <form onSubmit={handleSubmit}>
+          <div className="container mx-auto max-w-6xl px-4 py-8 md:py-12">
 
-              <Card>
-                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <div className="space-y-1.5">
-                    <CardTitle>Detalles del Proyecto y Cliente</CardTitle>
-                  </div>
-                  <FormField
-                    control={form.control}
-                    name="userId"
-                    render={({ field }) => (
-                      <FormItem className="w-full md:max-w-xs">
-                        {usersLoading ? (
-                          <Skeleton className="h-10 w-full" />
-                        ) : (
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <UserIcon className="mr-2 h-4 w-4 text-muted-foreground" />
-                                <SelectValue placeholder="Seleccionar un usuario..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {allUsers.map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  {u.displayName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardHeader>
-                <CardContent className="space-y-4 pt-4">
-                  <FormField
-                    control={form.control}
-                    name="projectName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre del Proyecto</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Ej., Remodelación de Cocina"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="clientName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nombre del Cliente</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Ej., Juan Pérez" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="clientPhone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Teléfono del Cliente</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Ej., 8888-8888" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>1. Materiales</CardTitle>
-                  <CardDescription>
-                    Define hasta 3 tipos de materiales que usarás.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {materialFields.map((field, index) => (
-                    <div
-                      key={field.id}
-                      className="p-4 md:p-6 border rounded-lg space-y-6 relative bg-muted/20 shadow-sm"
-                    >
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        {materialFields.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => removeMaterial(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Eliminar Material</span>
-                          </Button>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                        <FormField
-                          control={form.control}
-                          name={`materials.${index}.defaultMaterialId`}
-                          render={({ field: selectField }) => (
-                            <FormItem>
-                              <FormLabel>Tipo de Material</FormLabel>
-                              <Select
-                                onValueChange={(value) =>
-                                  handleDefaultMaterialChange(value, index)
-                                }
-                                value={selectField.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar un material estándar" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="custom">
-                                    Personalizado
-                                  </SelectItem>
-                                  {defaultMaterials?.map((m) => (
-                                    <SelectItem key={m.id} value={m.id}>
-                                      {m.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`materials.${index}.name`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nombre del Material</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Ej., Madera de Cerezo"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField
-                          control={form.control}
-                          name={`materials.${index}.height`}
-                          render={({ field: aField }) => (
-                            <FormItem>
-                              <FormLabel>Largo</FormLabel>
-                              <div className="flex gap-2">
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="any"
-                                    {...form.register(
-                                      `materials.${index}.height.value`,
-                                    )}
-                                  />
-                                </FormControl>
-                                <Select
-                                  onValueChange={(unit) =>
-                                    form.setValue(
-                                      `materials.${index}.height.unit`,
-                                      unit as Unit,
-                                    )
-                                  }
-                                  defaultValue={aField.value.unit}
-                                >
-                                  <SelectTrigger className="w-[80px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="m">m</SelectItem>
-                                    <SelectItem value="cm">cm</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage>
-                                {
-                                  form.formState.errors.materials?.[index]
-                                    ?.height?.value?.message
-                                }
-                              </FormMessage>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`materials.${index}.width`}
-                          render={({ field: aField }) => (
-                            <FormItem>
-                              <FormLabel>Ancho</FormLabel>
-                              <div className="flex gap-2">
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="any"
-                                    {...form.register(
-                                      `materials.${index}.width.value`,
-                                    )}
-                                  />
-                                </FormControl>
-                                <Select
-                                  onValueChange={(unit) =>
-                                    form.setValue(
-                                      `materials.${index}.width.unit`,
-                                      unit as Unit,
-                                    )
-                                  }
-                                  defaultValue={aField.value.unit}
-                                >
-                                  <SelectTrigger className="w-[80px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="m">m</SelectItem>
-                                    <SelectItem value="cm">cm</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage>
-                                {
-                                  form.formState.errors.materials?.[index]
-                                    ?.width?.value?.message
-                                }
-                              </FormMessage>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField
-                          control={form.control}
-                          name={`materials.${index}.installationOrientation`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Orientación de Instalación</FormLabel>
-                              <Select
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="Vertical">
-                                    Vertical
-                                  </SelectItem>
-                                  <SelectItem value="Horizontal">
-                                    Horizontal
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`materials.${index}.color`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Color</FormLabel>
-                              <FormControl>
-                                <div className="flex gap-2 flex-wrap">
-                                  {defaultColors.map((color, colorIndex) => (
-                                    <button
-                                      type="button"
-                                      key={color}
-                                      className={cn(
-                                        "h-10 w-10 rounded-md border-2 transition-all hover:scale-105",
-                                        field.value === color
-                                          ? "border-primary ring-2 ring-primary ring-offset-2"
-                                          : "border-transparent",
-                                      )}
-                                      style={{ backgroundColor: color }}
-                                      onClick={() => field.onChange(color)}
-                                    >
-                                      {field.value === color && (
-                                        <Check className="h-5 w-5 text-white stroke-current mx-auto" />
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                  {materialFields.length < 3 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => appendMaterial(createDefaultMaterial())}
-                      className="w-full md:w-auto"
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" /> Agregar Material
-                    </Button>
-                  )}
-                  {form.formState.errors.materials && (
-                    <p className="text-sm font-medium text-destructive">
-                      {form.formState.errors.materials.message ||
-                        form.formState.errors.materials.root?.message}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>2. Superficies</CardTitle>
-                  <CardDescription>
-                    Define las superficies (ej., paredes, sobres) a cubrir.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {surfaceFields.map((field, index) => (
-                    <div
-                      key={field.id}
-                      className="p-4 md:p-6 border rounded-lg space-y-6 relative bg-muted/20 shadow-sm"
-                    >
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        {surfaceFields.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => removeSurface(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Eliminar Superficie</span>
-                          </Button>
-                        )}
-                      </div>
-                      <FormField
-                        control={form.control}
-                        name={`surfaces.${index}.name`}
-                        render={({ field }) => (
-                          <FormItem className="pt-2">
-                            <FormLabel>Nombre</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Ej., Sobre Principal"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField
-                          control={form.control}
-                          name={`surfaces.${index}.width`}
-                          render={({ field: aField }) => (
-                            <FormItem>
-                              <FormLabel>Ancho</FormLabel>
-                              <div className="flex gap-2">
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="any"
-                                    {...form.register(
-                                      `surfaces.${index}.width.value`,
-                                    )}
-                                  />
-                                </FormControl>
-                                <Select
-                                  onValueChange={(unit) =>
-                                    form.setValue(
-                                      `surfaces.${index}.width.unit`,
-                                      unit as Unit,
-                                    )
-                                  }
-                                  defaultValue={aField.value.unit}
-                                >
-                                  <SelectTrigger className="w-[80px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="m">m</SelectItem>
-                                    <SelectItem value="cm">cm</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage>
-                                {
-                                  form.formState.errors.surfaces?.[index]?.width
-                                    ?.value?.message
-                                }
-                              </FormMessage>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`surfaces.${index}.height`}
-                          render={({ field: aField }) => (
-                            <FormItem>
-                              <FormLabel>Alto</FormLabel>
-                              <div className="flex gap-2">
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="any"
-                                    {...form.register(
-                                      `surfaces.${index}.height.value`,
-                                    )}
-                                  />
-                                </FormControl>
-                                <Select
-                                  onValueChange={(unit) =>
-                                    form.setValue(
-                                      `surfaces.${index}.height.unit`,
-                                      unit as Unit,
-                                    )
-                                  }
-                                  defaultValue={aField.value.unit}
-                                >
-                                  <SelectTrigger className="w-[80px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="m">m</SelectItem>
-                                    <SelectItem value="cm">cm</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage>
-                                {
-                                  form.formState.errors.surfaces?.[index]
-                                    ?.height?.value?.message
-                                }
-                              </FormMessage>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                  {surfaceFields.length < 6 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => appendSurface(createDefaultSurface())}
-                      className="w-full md:w-auto"
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" /> Agregar Superficie
-                    </Button>
-                  )}
-                  {form.formState.errors.surfaces && (
-                    <p className="text-sm font-medium text-destructive">
-                      {form.formState.errors.surfaces.message ||
-                        form.formState.errors.surfaces.root?.message}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <div className="flex justify-end pb-8">
-                <Button
-                  type="submit"
-                  size="lg"
-                  disabled={form.formState.isSubmitting}
-                  className="w-full md:w-auto"
-                >
-                  {form.formState.isSubmitting ? (
-                    <Loader className="animate-spin mr-2" />
-                  ) : null}
-                  {form.formState.isSubmitting
-                    ? "Creando..."
-                    : "Crear Proyecto"}
-                </Button>
+            {/* ── Page Header ── */}
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className="mb-10"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                </div>
+                <h1 className="text-3xl font-bold tracking-tight">Nuevo Proyecto</h1>
               </div>
-            </form>
-          </Form>
-        </div>
+              <p className="text-muted-foreground ml-11">
+                Define los parámetros del proyecto para generar el plano de corte.
+              </p>
+            </motion.div>
+
+            {/* ── Two-column layout ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* ── LEFT SIDEBAR: Project + Client details ── */}
+              <motion.div
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.35, delay: 0.08 }}
+                className="lg:col-span-1 space-y-4"
+              >
+                {/* Project details card */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <h2 className="text-sm font-semibold text-foreground">Proyecto</h2>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="projectName" className="text-xs text-muted-foreground">
+                      Nombre *
+                    </Label>
+                    <Input
+                      id="projectName"
+                      placeholder="Ej., Remodelación de Cocina"
+                      value={projectName}
+                      onChange={(e) => setProjectName(e.target.value)}
+                      className="h-9 bg-background/60 border-border/60 focus-visible:border-primary"
+                    />
+                  </div>
+
+                  {/* Assigned user */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <UserIcon className="h-3 w-3" /> Asignado a
+                    </Label>
+                    <Select value={assignedUserId} onValueChange={setAssignedUserId}>
+                      <SelectTrigger className="h-9 bg-background/60 border-border/60">
+                        <SelectValue placeholder="Seleccionar usuario…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allUsers.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Client details card */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserIcon className="h-4 w-4 text-muted-foreground" />
+                    <h2 className="text-sm font-semibold text-foreground">Cliente</h2>
+                    <span className="text-xs text-muted-foreground ml-auto">Opcional</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="clientName" className="text-xs text-muted-foreground">Nombre</Label>
+                    <Input
+                      id="clientName"
+                      placeholder="Ej., Juan Pérez"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      className="h-9 bg-background/60 border-border/60 focus-visible:border-primary"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="clientPhone" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Phone className="h-3 w-3" /> Teléfono
+                    </Label>
+                    <Input
+                      id="clientPhone"
+                      placeholder="Ej., 8888-8888"
+                      value={clientPhone}
+                      onChange={(e) => setClientPhone(e.target.value)}
+                      className="h-9 bg-background/60 border-border/60 focus-visible:border-primary"
+                    />
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="space-y-2">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={submitting}
+                    className="w-full h-11 gap-2 bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+                  >
+                    {submitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-4 w-4" />
+                    )}
+                    {submitting ? "Creando proyecto…" : "Crear Proyecto"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    disabled={submitting}
+                    onClick={() => router.push("/projects")}
+                    className="w-full h-10 text-muted-foreground hover:text-foreground"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </motion.div>
+
+
+              {/* ── RIGHT PANEL: Materials + Surfaces ── */}
+              <motion.div
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.35, delay: 0.12 }}
+                className="lg:col-span-2 space-y-6"
+              >
+                {/* ── Materials section ── */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                      <h2 className="text-sm font-semibold">Materiales</h2>
+                      <span className="text-xs text-muted-foreground">
+                        {materials.length}/6
+                      </span>
+                    </div>
+                    {canAddMore && (
+                      <div className="flex gap-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCatalogOpen(true)}
+                          className="h-7 px-2.5 text-xs gap-1.5 border-border/60 hover:!bg-primary/10 hover:!text-primary hover:!border-primary/40"
+                        >
+                          <Layers className="h-3.5 w-3.5" />
+                          Del catálogo
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setMaterials((p) => [...p, createCustomMaterial()])
+                          }
+                          className="h-7 px-2.5 text-xs gap-1.5 border-border/60 hover:!bg-muted/40 hover:!text-foreground"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Personalizado
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Empty state */}
+                  {materials.length === 0 && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex flex-col items-center justify-center py-12 rounded-xl border-2 border-dashed border-border/40 bg-muted/10 gap-4"
+                    >
+                      <div className="h-14 w-14 rounded-2xl bg-primary/8 border border-primary/15 flex items-center justify-center">
+                        <Package className="h-6 w-6 text-primary/60" />
+                      </div>
+                      <div className="text-center space-y-1">
+                        <p className="text-sm font-medium text-foreground/80">
+                          Sin materiales aún
+                        </p>
+                        <p className="text-xs text-muted-foreground max-w-[220px]">
+                          Agrega desde el catálogo o crea uno personalizado para este proyecto.
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={() => setCatalogOpen(true)}
+                          className="gap-1.5"
+                        >
+                          <Layers className="h-3.5 w-3.5" />
+                          Del catálogo
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setMaterials([createCustomMaterial()])}
+                          className="gap-1.5 border-border/60 hover:!bg-muted/40 hover:!text-foreground"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Personalizado
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Material list */}
+                  {materials.length > 0 && (
+                    <div className="max-h-[380px] overflow-y-auto pr-1.5 space-y-3 scrollbar-thin scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent">
+                      <AnimatePresence mode="popLayout">
+                        {materials.map((m, i) => (
+                          <NewMaterialCard
+                            key={m.id}
+                            material={m}
+                            index={i}
+                            onChange={(updated) =>
+                              setMaterials((p) =>
+                                p.map((x) => (x.id === updated.id ? updated : x))
+                              )
+                            }
+                            onDelete={() =>
+                              setMaterials((p) => p.filter((x) => x.id !== m.id))
+                            }
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Surfaces section ── */}
+                <div className="rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+                      <h2 className="text-sm font-semibold">Superficies</h2>
+                      <span className="text-xs text-muted-foreground">
+                        {surfaces.length}/6
+                      </span>
+                    </div>
+                    {surfaces.length < 6 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSurfaces((p) => [...p, createSurface()])}
+                        className="h-7 px-2.5 text-xs gap-1.5 border-border/60 hover:!bg-muted/40 hover:!text-foreground"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Agregar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Header labels */}
+                  <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 pb-1">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      Nombre
+                    </span>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide w-20 text-right">
+                      Ancho
+                    </span>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide w-16" />
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide w-20 text-right">
+                      Alto
+                    </span>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide w-16" />
+                    <span className="w-8" />
+                  </div>
+
+                  {/* Surface rows */}
+                  <AnimatePresence mode="popLayout">
+                    {surfaces.map((s, i) => (
+                      <NewSurfaceRow
+                        key={s.id}
+                        surface={s}
+                        canDelete={surfaces.length > 1}
+                        onChange={(updated) =>
+                          setSurfaces((p) =>
+                            p.map((x) => (x.id === updated.id ? updated : x))
+                          )
+                        }
+                        onDelete={() =>
+                          setSurfaces((p) => p.filter((x) => x.id !== s.id))
+                        }
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </form>
+
+        {/* Catalog picker dialog */}
+        <CatalogMaterialPicker
+          open={catalogOpen}
+          onOpenChange={setCatalogOpen}
+          existingMaterialDefaultIds={existingDefaultIds}
+          onConfirm={handleCatalogConfirm}
+        />
       </main>
-    </>
+    </div>
   );
 }
