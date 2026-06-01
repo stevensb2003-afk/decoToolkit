@@ -30,7 +30,6 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const [draggingKey, setDraggingKey] = useState<CornerKey | null>(null);
   const [magnifierPos, setMagnifierPos] = useState<{ x: number; y: number } | null>(null);
-  const [previewMode, setPreviewMode] = useState<'single' | 'tile'>('single');
 
   const [warping, setWarping] = useState(false);
   const [warpedBlob, setWarpedBlob] = useState<Blob | null>(null);
@@ -40,6 +39,7 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
   const [aiBlob, setAiBlob] = useState<Blob | null>(null);
   const [aiUrl, setAiUrl] = useState<string | null>(null);
   const [showingAi, setShowingAi] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -53,7 +53,7 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
       setAiUrl(null);
       setShowingAi(false);
       setMagnifierPos(null);
-      setPreviewMode('single');
+      setAiError(null);
     }
   }, [open, initialCorners]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -111,12 +111,15 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
   const handleGenerateAI = async () => {
     if (!metadata?.seamlessPrompt) return;
     setGenerating(true);
+    setAiError(null);
     try {
-      const blob = await fetchAiTexture(metadata.seamlessPrompt);
+      const blob = await fetchAiTexture(metadata.seamlessPrompt, materialWidth, materialHeight);
       setAiBlob(blob);
       setAiUrl(URL.createObjectURL(blob));
       setShowingAi(true);
-    } catch (err) { console.error(err); }
+    } catch (err: any) {
+      setAiError(err?.message || 'Error al generar con IA');
+    }
     finally { setGenerating(false); }
   };
 
@@ -129,9 +132,12 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
   const br = corners.bottomRight; const bl = corners.bottomLeft;
   const polygonPoints = `${tl.x*100},${tl.y*100} ${tr.x*100},${tr.y*100} ${br.x*100},${br.y*100} ${bl.x*100},${bl.y*100}`;
 
-  const previewBgStyle = previewMode === 'single'
-    ? { backgroundSize: 'contain', backgroundRepeat: 'no-repeat' as const, backgroundPosition: 'center' }
-    : { backgroundSize: '33.33% 33.33%', backgroundRepeat: 'repeat' as const };
+  // Single-sheet preview style (mosaico removed)
+  const previewBgStyle = {
+    backgroundSize: 'contain',
+    backgroundRepeat: 'no-repeat' as const,
+    backgroundPosition: 'center',
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,7 +152,7 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
           </p>
         </DialogHeader>
 
-        {/* ── Crop ───────────────────────────────────────────────────────────────── */}
+        {/* ── Crop ────────────────────────────────────────────────────────────── */}
         {step === 'crop' && (
           <div ref={imgContainerRef} className="relative w-full aspect-[3/4] md:aspect-square bg-black rounded-lg overflow-hidden border border-zinc-800 select-none touch-none">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -176,22 +182,19 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
           </div>
         )}
 
-        {/* ── Preview ────────────────────────────────────────────────────────────── */}
+        {/* ── Preview ──────────────────────────────────────────────────────────── */}
         {step === 'preview' && warpedUrl && (
           <div className="w-full aspect-[3/4] md:aspect-square bg-zinc-900 rounded-lg overflow-hidden border border-zinc-700 relative">
-            <div className="absolute top-2 left-2 z-10 bg-black/40 backdrop-blur-md border border-white/10 rounded-full p-0.5 flex gap-0.5">
-              {(['single', 'tile'] as const).map((mode) => (
-                <button key={mode} onClick={() => setPreviewMode(mode)}
-                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold cursor-pointer transition-all duration-200 ${previewMode === mode ? 'bg-white text-black' : 'bg-transparent text-zinc-400'}`}>
-                  {mode === 'single' ? '📐 Lámina' : '🧱 Mosaico'}
-                </button>
-              ))}
-            </div>
             <div className="absolute inset-0 transition-all duration-300" style={{ backgroundImage: `url(${showingAi && aiUrl ? aiUrl : warpedUrl})`, ...previewBgStyle }} />
             <div className="absolute inset-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] pointer-events-none" />
             {showingAi && (
               <div className="absolute top-2 right-2 bg-indigo-500 text-white text-xs px-2 py-1 rounded-md shadow flex items-center gap-1 font-medium">
                 <Sparkles className="w-3 h-3" /> IA Seamless
+              </div>
+            )}
+            {aiError && (
+              <div className="absolute bottom-2 left-2 right-2 bg-red-900/80 text-red-200 text-xs px-3 py-2 rounded-md backdrop-blur-sm">
+                ⚠️ {aiError}
               </div>
             )}
           </div>
@@ -211,7 +214,7 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
                 <Button variant="outline" size="icon" onClick={() => setStep('crop')} disabled={rotating || generating}>
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="secondary" size="icon" onClick={handleRotate} disabled={rotating || generating || showingAi}>
+                <Button variant="secondary" size="icon" onClick={handleRotate} disabled={rotating || generating || showingAi} title="Rotar 90°">
                   {rotating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
                 </Button>
                 {metadata?.seamlessPrompt && !aiUrl && (

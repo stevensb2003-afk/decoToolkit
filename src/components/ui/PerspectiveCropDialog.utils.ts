@@ -32,7 +32,11 @@ export async function warpImage(
   return blob;
 }
 
-export async function fetchAiTexture(seamlessPrompt: string): Promise<Blob> {
+export async function fetchAiTexture(
+  seamlessPrompt: string,
+  materialWidth?: number,
+  materialHeight?: number,
+): Promise<Blob> {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
@@ -40,9 +44,12 @@ export async function fetchAiTexture(seamlessPrompt: string): Promise<Blob> {
   const res = await fetch('/api/generate-texture', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ prompt: seamlessPrompt }),
+    body: JSON.stringify({ prompt: seamlessPrompt, materialWidth, materialHeight }),
   });
-  if (!res.ok) throw new Error('Error de generación');
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || 'Error de generación');
+  }
   const { base64Image } = await res.json();
   const byteCharacters = atob(base64Image);
   const bytes = new Uint8Array(byteCharacters.length);
