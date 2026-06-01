@@ -1,11 +1,15 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Camera, ImageIcon, X, Loader2 } from 'lucide-react';
+import { useRef, useState, useCallback } from 'react';
+import { Camera, ImageIcon, X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { uploadProjectTextureAction, deleteProjectTextureAction } from '@/lib/storage-actions';
 import { useToast } from '@/hooks/use-toast';
 import type { MaterialTexture } from '@/lib/types';
+import { resizeForAI } from '@/lib/perspective-warp';
+import type { Corners } from '@/lib/perspective-warp';
+import { detectCornersFromBase64, resolveCorners, FULL_IMAGE_CORNERS } from '@/lib/texture-corner-client';
+import { PerspectiveCropDialog } from '@/components/ui/PerspectiveCropDialog';
 
 interface TextureUploaderProps {
   materialId: string;
@@ -15,6 +19,8 @@ interface TextureUploaderProps {
   materialHeight: number;
   onTextureChange: (texture: MaterialTexture | null) => void;
 }
+
+type Phase = 'idle' | 'detecting' | 'reviewing' | 'uploading';
 
 const MAX_SIZE_BYTES = 15 * 1024 * 1024;
 
@@ -33,9 +39,17 @@ export function TextureUploader({
   const { toast } = useToast();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+
+  const [phase, setPhase] = useState<Phase>('idle');
   const [deleting, setDeleting] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  const [cropData, setCropData] = useState<{
+    file: File;
+    previewUrl: string;
+    corners: Corners;
+    metadata?: any;
+  } | null>(null);
 
   function validateDimensions(): boolean {
     if (materialWidth <= 0 || materialHeight <= 0) {
@@ -49,7 +63,7 @@ export function TextureUploader({
     return true;
   }
 
-  async function handleFile(file: File | undefined) {
+  const handleFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       toast({ variant: 'destructive', title: 'Archivo no válido', description: 'Solo se aceptan imágenes.' });
@@ -60,17 +74,49 @@ export function TextureUploader({
       return;
     }
 
-    setUploading(true);
-    setProgress(10);
-    const progressInterval = setInterval(() => setProgress(p => (p < 85 ? p + 10 : p)), 400);
+    setPhase('detecting');
+    setProgress(15);
+
+    try {
+      const { base64, mimeType } = await resizeForAI(file, 1024);
+      const aiResult = await detectCornersFromBase64(base64, mimeType);
+
+      setCropData({
+        file,
+        previewUrl: `data:${mimeType};base64,${base64}`,
+        corners: resolveCorners(aiResult),
+        metadata: aiResult?.metadata,
+      });
+      setPhase('reviewing');
+      setProgress(30);
+    } catch (err) {
+      console.warn('[TextureUploader] AI detection failed, opening dialog with full image:', err);
+      setCropData({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        corners: FULL_IMAGE_CORNERS,
+        metadata: undefined,
+      });
+      setPhase('reviewing');
+      setProgress(30);
+    }
+  }, [toast]);
+
+  const handleActualUpload = async (fileToUpload: File, metadata?: any) => {
+    setPhase('uploading');
+    setProgress(70);
+    const interval = setInterval(() => setProgress(p => (p < 92 ? p + 5 : p)), 400);
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', fileToUpload);
+      if (metadata) formData.append('metadata', JSON.stringify(metadata));
+
       const result = await uploadProjectTextureAction(projectId, materialId, formData);
 
       if (!result.success) {
         toast({ variant: 'destructive', title: 'Error al subir', description: result.error });
+        setPhase('idle');
         return;
       }
       setProgress(100);
@@ -78,12 +124,12 @@ export function TextureUploader({
     } catch (err) {
       console.error('Upload error:', err);
       toast({ variant: 'destructive', title: 'Error al subir', description: 'No se pudo subir la textura.' });
+      setPhase('idle');
     } finally {
-      clearInterval(progressInterval);
-      setUploading(false);
-      setProgress(0);
+      clearInterval(interval);
+      setTimeout(() => { setPhase('idle'); setProgress(0); setCropData(null); }, 600);
     }
-  }
+  };
 
   async function handleDelete() {
     if (!currentTexture) return;
@@ -99,12 +145,14 @@ export function TextureUploader({
     }
   }
 
-  if (uploading) {
+  // ── Loading state ───────────────────────────────────────────────────────────
+  if (phase === 'detecting' || phase === 'uploading') {
+    const label = phase === 'detecting' ? '🤖 Detectando bordes con IA...' : '☁️ Subiendo textura...';
     return (
       <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-3">
         <div className="flex items-center gap-2 mb-2">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          <span className="text-xs text-zinc-400">Subiendo textura...</span>
+          <span className="text-xs text-zinc-400">{label}</span>
         </div>
         <div className="w-full h-1.5 bg-zinc-700 rounded-full overflow-hidden">
           <div
@@ -116,6 +164,7 @@ export function TextureUploader({
     );
   }
 
+  // ── Texture preview ─────────────────────────────────────────────────────────
   if (currentTexture) {
     return (
       <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-2 flex items-center gap-3">
@@ -130,6 +179,10 @@ export function TextureUploader({
           <p className="text-[10px] text-zinc-500">
             {currentTexture.originalWidth}×{currentTexture.originalHeight}px
           </p>
+          <div className="flex items-center gap-1 mt-0.5">
+            <Sparkles className="h-2.5 w-2.5 text-primary/70" />
+            <span className="text-[9px] text-primary/70 font-medium">Procesada con IA</span>
+          </div>
         </div>
         <Button
           type="button"
@@ -145,45 +198,58 @@ export function TextureUploader({
     );
   }
 
+  // ── Upload buttons ──────────────────────────────────────────────────────────
   return (
-    <div className="rounded-md border border-dashed border-zinc-700 bg-zinc-900/40 p-3 flex flex-col items-center gap-2">
-      <ImageIcon className="h-6 w-6 text-zinc-600" />
-      <p className="text-[10px] text-zinc-500">Añade una textura al material</p>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs gap-1.5 border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-          onClick={() => { if (!validateDimensions()) return; cameraRef.current?.click(); }}
-        >
-          <Camera className="h-3.5 w-3.5" /> Tomar foto
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs gap-1.5 border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-          onClick={() => { if (!validateDimensions()) return; galleryRef.current?.click(); }}
-        >
-          <ImageIcon className="h-3.5 w-3.5" /> Subir imagen
-        </Button>
+    <div className="space-y-2">
+      <div className="rounded-md border border-dashed border-zinc-700 bg-zinc-900/40 p-3 flex flex-col items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="h-4 w-4 text-primary/80" />
+          <p className="text-[10px] text-zinc-500">Textura con corrección de perspectiva IA</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5 border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+            onClick={() => { if (!validateDimensions()) return; cameraRef.current?.click(); }}
+          >
+            <Camera className="h-3.5 w-3.5" /> Tomar foto
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5 border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+            onClick={() => { if (!validateDimensions()) return; galleryRef.current?.click(); }}
+          >
+            <ImageIcon className="h-3.5 w-3.5" /> Subir imagen
+          </Button>
+        </div>
       </div>
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={e => handleFile(e.target.files?.[0])}
-      />
-      <input
-        ref={galleryRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => handleFile(e.target.files?.[0])}
-      />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => handleFile(e.target.files?.[0])} />
+      <input ref={galleryRef} type="file" accept="image/*" className="hidden"
+        onChange={e => handleFile(e.target.files?.[0])} />
+
+      {/* ── Dialog for Corner Review ──────────────────────────────────────────── */}
+      {cropData && phase === 'reviewing' && (
+        <PerspectiveCropDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) { setPhase('idle'); setCropData(null); }
+          }}
+          file={cropData.file}
+          previewUrl={cropData.previewUrl}
+          initialCorners={cropData.corners}
+          materialWidth={materialWidth}
+          materialHeight={materialHeight}
+          metadata={cropData.metadata}
+          onConfirm={(finalFile) => {
+            handleActualUpload(finalFile, cropData.metadata);
+          }}
+        />
+      )}
     </div>
   );
 }

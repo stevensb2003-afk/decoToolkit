@@ -27,7 +27,14 @@ function extractFileName(storagePath: string): string {
   return storagePath.split('/').pop() ?? storagePath;
 }
 
-async function detectCorners(base64: string, mimeType: string): Promise<any | null> {
+const FULL_IMAGE_CORNERS: Corners = {
+  topLeft: { x: 0, y: 0 },
+  topRight: { x: 1, y: 0 },
+  bottomRight: { x: 1, y: 1 },
+  bottomLeft: { x: 0, y: 1 },
+};
+
+async function detectCorners(base64: string, mimeType: string): Promise<{ corners: Corners; metadata?: any; fallback?: boolean } | null> {
   try {
     const auth = getAuth();
     const user = auth.currentUser;
@@ -41,9 +48,7 @@ async function detectCorners(base64: string, mimeType: string): Promise<any | nu
     });
 
     if (!res.ok) return null;
-    const data = await res.json();
-    if (data.fallback) return null; // full image — no warp needed
-    return data;
+    return await res.json();
   } catch {
     return null;
   }
@@ -90,24 +95,26 @@ export function DefaultMaterialTextureUploader({
       const { base64, mimeType } = await resizeForAI(file, 1024);
       const aiResult = await detectCorners(base64, mimeType);
 
-      if (aiResult) {
-        // AI found corners -> Go to manual review
-        setCropData({
-          file,
-          previewUrl: `data:${mimeType};base64,${base64}`,
-          corners: aiResult,
-          metadata: aiResult.metadata,
-        });
-        setPhase('reviewing');
-        setProgress(30);
-      } else {
-        // AI failed or fallback -> Upload original directly
-        toast({ title: 'Aviso', description: 'No se detectaron bordes claros. Subiendo imagen original.' });
-        await processAndUpload(file);
-      }
+      const detectedCorners = aiResult && !aiResult.fallback && aiResult.corners ? aiResult.corners : null;
+      setCropData({
+        file,
+        previewUrl: `data:${mimeType};base64,${base64}`,
+        corners: detectedCorners ?? FULL_IMAGE_CORNERS,
+        metadata: aiResult?.metadata,
+      });
+      setPhase('reviewing');
+      setProgress(30);
     } catch (err) {
-      console.warn('[TextureUploader] AI detection failed, uploading original:', err);
-      await processAndUpload(file);
+      console.warn('[DefaultMaterialTextureUploader] AI detection failed, opening dialog with full image:', err);
+      const previewUrl = URL.createObjectURL(file);
+      setCropData({
+        file,
+        previewUrl,
+        corners: FULL_IMAGE_CORNERS,
+        metadata: undefined,
+      });
+      setPhase('reviewing');
+      setProgress(30);
     }
   }, [toast]); // eslint-disable-next-line react-hooks/exhaustive-deps
 
