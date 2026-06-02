@@ -18,16 +18,21 @@ export async function POST(req: Request) {
       prompt: body.prompt?.slice(0, 80),
       materialWidth: body.materialWidth,
       materialHeight: body.materialHeight,
+      hasImage: !!body.imageBase64,
     });
 
     if (!body.prompt) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+    }
+    if (!body.imageBase64) {
+      return NextResponse.json({ error: 'imageBase64 reference is required for Image-to-Image' }, { status: 400 });
     }
 
     const result = await textureGeneratorFlow({
       prompt: body.prompt,
       materialWidth: typeof body.materialWidth === 'number' ? body.materialWidth : undefined,
       materialHeight: typeof body.materialHeight === 'number' ? body.materialHeight : undefined,
+      imageBase64: body.imageBase64,
     });
 
     console.log('[POST /api/generate-texture] Success');

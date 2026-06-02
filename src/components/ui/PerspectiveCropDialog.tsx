@@ -109,11 +109,24 @@ export function PerspectiveCropDialog({ open, onOpenChange, file, previewUrl, in
   };
 
   const handleGenerateAI = async () => {
-    if (!metadata?.seamlessPrompt) return;
+    if (!metadata?.seamlessPrompt || !warpedBlob) return;
     setGenerating(true);
     setAiError(null);
     try {
-      const blob = await fetchAiTexture(metadata.seamlessPrompt, materialWidth, materialHeight);
+      const blobToBase64 = (b: Blob): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const res = reader.result as string;
+            resolve(res.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(b);
+        });
+      };
+
+      const b64 = await blobToBase64(warpedBlob);
+      const blob = await fetchAiTexture(metadata.seamlessPrompt, materialWidth, materialHeight, b64);
       setAiBlob(blob);
       setAiUrl(URL.createObjectURL(blob));
       setShowingAi(true);

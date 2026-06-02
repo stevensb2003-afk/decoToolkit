@@ -34,8 +34,9 @@ export async function warpImage(
 
 export async function fetchAiTexture(
   seamlessPrompt: string,
-  materialWidth?: number,
-  materialHeight?: number,
+  materialWidth: number,
+  materialHeight: number,
+  imageBase64: string,
 ): Promise<Blob> {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -44,7 +45,7 @@ export async function fetchAiTexture(
   const res = await fetch('/api/generate-texture', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ prompt: seamlessPrompt, materialWidth, materialHeight }),
+    body: JSON.stringify({ prompt: seamlessPrompt, materialWidth, materialHeight, imageBase64 }),
   });
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
