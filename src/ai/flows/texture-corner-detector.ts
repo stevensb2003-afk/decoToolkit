@@ -39,7 +39,7 @@ export const textureCornerDetector = ai.defineFlow(
   },
   async ({ imageBase64, mimeType }) => {
     const { output } = await ai.generate({
-      model: 'googleai/gemini-2.5-pro',
+      model: 'vertexai/gemini-2.5-pro',
       output: { schema: CornersSchema },
       prompt: [
         {

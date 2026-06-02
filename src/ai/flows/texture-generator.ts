@@ -41,7 +41,7 @@ export const textureGeneratorFlow = ai.defineFlow(
 
     try {
       const response = await ai.generate({
-        model: 'googleai/imagen-4.0-generate-001',
+        model: 'vertexai/imagen-3.0-generate-002',
         prompt: `Seamless, perfectly tileable surface texture. Flat lay, top-down view, neutral even studio lighting, no directional shadows, no vignette, highly photorealistic 4K quality. The texture must be extracted directly from this reference material and look IDENTICAL to it in color, grain, pattern and finish. Subject: ${prompt}`,
         output: { format: 'media' },
         config: { aspectRatio },

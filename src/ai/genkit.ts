@@ -1,7 +1,13 @@
 import { genkit } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
+import { vertexAI } from '@genkit-ai/vertexai';
 
 export const ai = genkit({
-  plugins: [googleAI()],
-  model: 'googleai/gemini-2.5-flash',
+  plugins: [
+    vertexAI({
+      projectId: process.env.GCP_PROJECT_ID,
+      location: process.env.GCP_LOCATION || 'us-central1',
+    }),
+  ],
+  model: 'vertexai/gemini-2.5-flash',
 });
+
