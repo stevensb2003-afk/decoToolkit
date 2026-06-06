@@ -6,9 +6,14 @@ import { Button } from '@/components/ui/button';
 import { uploadProjectTextureAction, deleteProjectTextureAction } from '@/lib/storage-actions';
 import { useToast } from '@/hooks/use-toast';
 import type { MaterialTexture } from '@/lib/types';
-import { resizeForAI } from '@/lib/perspective-warp';
 import type { Corners } from '@/lib/perspective-warp';
-import { detectCornersFromBase64, resolveCorners, FULL_IMAGE_CORNERS } from '@/lib/texture-corner-client';
+
+const DEFAULT_CORNERS: Corners = {
+  topLeft: { x: 0.1, y: 0.1 },
+  topRight: { x: 0.9, y: 0.1 },
+  bottomRight: { x: 0.9, y: 0.9 },
+  bottomLeft: { x: 0.1, y: 0.9 },
+};
 import { PerspectiveCropDialog } from '@/components/ui/PerspectiveCropDialog';
 
 interface TextureUploaderProps {
@@ -20,7 +25,7 @@ interface TextureUploaderProps {
   onTextureChange: (texture: MaterialTexture | null) => void;
 }
 
-type Phase = 'idle' | 'detecting' | 'reviewing' | 'uploading';
+type Phase = 'idle' | 'reviewing' | 'uploading';
 
 const MAX_SIZE_BYTES = 15 * 1024 * 1024;
 
@@ -74,32 +79,13 @@ export function TextureUploader({
       return;
     }
 
-    setPhase('detecting');
-    setProgress(15);
-
-    try {
-      const { base64, mimeType } = await resizeForAI(file, 1024);
-      const aiResult = await detectCornersFromBase64(base64, mimeType);
-
-      setCropData({
-        file,
-        previewUrl: `data:${mimeType};base64,${base64}`,
-        corners: resolveCorners(aiResult),
-        metadata: aiResult?.metadata,
-      });
-      setPhase('reviewing');
-      setProgress(30);
-    } catch (err) {
-      console.warn('[TextureUploader] AI detection failed, opening dialog with full image:', err);
-      setCropData({
-        file,
-        previewUrl: URL.createObjectURL(file),
-        corners: FULL_IMAGE_CORNERS,
-        metadata: undefined,
-      });
-      setPhase('reviewing');
-      setProgress(30);
-    }
+    setCropData({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      corners: DEFAULT_CORNERS,
+      metadata: undefined,
+    });
+    setPhase('reviewing');
   }, [toast]);
 
   const handleActualUpload = async (fileToUpload: File, metadata?: any) => {
@@ -146,8 +132,8 @@ export function TextureUploader({
   }
 
   // ── Loading state ───────────────────────────────────────────────────────────
-  if (phase === 'detecting' || phase === 'uploading') {
-    const label = phase === 'detecting' ? '🤖 Detectando bordes con IA...' : '☁️ Subiendo textura...';
+  if (phase === 'uploading') {
+    const label = '☁️ Subiendo textura...';
     return (
       <div className="rounded-md border border-zinc-700 bg-zinc-900/60 p-3">
         <div className="flex items-center gap-2 mb-2">
@@ -181,7 +167,7 @@ export function TextureUploader({
           </p>
           <div className="flex items-center gap-1 mt-0.5">
             <Sparkles className="h-2.5 w-2.5 text-primary/70" />
-            <span className="text-[9px] text-primary/70 font-medium">Procesada con IA</span>
+            <span className="text-[9px] text-primary/70 font-medium">Corrección de perspectiva</span>
           </div>
         </div>
         <Button
@@ -204,7 +190,7 @@ export function TextureUploader({
       <div className="rounded-md border border-dashed border-zinc-700 bg-zinc-900/40 p-3 flex flex-col items-center gap-2">
         <div className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-primary/80" />
-          <p className="text-[10px] text-zinc-500">Textura con corrección de perspectiva IA</p>
+          <p className="text-[10px] text-zinc-500">Ajuste de perspectiva manual</p>
         </div>
         <div className="flex gap-2">
           <Button

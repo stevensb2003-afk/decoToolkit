@@ -39,11 +39,19 @@ export const textureGeneratorFlow = ai.defineFlow(
     const aspectRatio = pickAspectRatio(materialWidth ?? 1, materialHeight ?? 1);
 
     try {
-      // 1. Authenticate with Google Cloud securely (works in local via JSON and in App Hosting via ADC)
-      const auth = new GoogleAuth({
+      // 1. Authenticate with Google Cloud securely
+      let authOptions: any = {
         scopes: 'https://www.googleapis.com/auth/cloud-platform',
-      });
+      };
+      
+      // Use the proper Firebase service account instead of the stray gcp-key.json
+      if (process.env.SERVICE_ACCOUNT_CREDENTIALS) {
+        authOptions.credentials = JSON.parse(process.env.SERVICE_ACCOUNT_CREDENTIALS);
+      }
+
+      const auth = new GoogleAuth(authOptions);
       const client = await auth.getClient();
+      
       const projectId = process.env.GCP_PROJECT_ID || (await auth.getProjectId());
       const location = process.env.GCP_LOCATION || 'us-central1';
 
@@ -53,53 +61,98 @@ export const textureGeneratorFlow = ai.defineFlow(
         throw new Error('Failed to retrieve Google Cloud access token');
       }
 
-      // 3. Make direct REST call to Vertex AI Imagen 3.0 Capability Model for true Image-to-Image editing
-      const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-capability-001:predict`;
+      // Log the credentials being used for debugging IAM
+      try {
+        const credentials = await auth.getCredentials();
+        console.log(`[textureGeneratorFlow] Authenticated as: ${credentials?.client_email} for project: ${projectId}`);
+      } catch (e) {
+        console.log(`[textureGeneratorFlow] Could not retrieve client_email:`, e);
+      }
+
+      // 3. Make direct REST call to Vertex AI Imagen 3 (imagen-3.0-generate-002) for Text-to-Image generation
+      // Usamos el prompt súper detallado que generó Gemini Vision a partir de tu foto, para generar una textura seamless perfecta.
+      const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-002:predict`;
+
+      const promptText = `A clean, seamless, tileable material texture of: ${prompt}. High quality, uniform lighting, no shadows.`;
 
       const requestBody = {
         instances: [
           {
-            image: {
-              bytesBase64Encoded: imageBase64,
-            },
-            prompt: `Seamless, perfectly tileable surface texture. Make the lighting perfectly flat, even, and homogeneous. Remove all directional shadows, hot-spots, and glare. Preserve the grain, color, and pattern structure of the original image, highly realistic 4K. Subject: ${prompt}`,
+            prompt: promptText,
           },
         ],
         parameters: {
-          editConfig: {
-            editMode: 'EDIT_MODE_DEFAULT',
-            imageStrength: 0.75, // Conserves 75% of original texture grains while allowing 25% change to clean shadows & make seamless
-          },
+          sampleCount: 1,
           aspectRatio,
-          outputMimeType: 'image/jpeg',
         },
       };
 
-      console.log(`[textureGeneratorFlow] Calling Vertex AI REST API for True Image-to-Image (Project: ${projectId})`);
+      console.log(`[textureGeneratorFlow] Calling Vertex AI REST API for Text-to-Image generation (Project: ${projectId})`);
+      let responseBody;
+      let rawText = '';
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           Authorization: `Bearer ${accessToken.token}`,
         },
         body: JSON.stringify(requestBody),
+        cache: 'no-store',
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        rawText = await response.text();
+        try { responseBody = JSON.parse(rawText); } catch(e) { responseBody = {}; }
+      } else {
         const errText = await response.text();
         throw new Error(`Vertex AI API returned error: ${response.status} ${response.statusText} - ${errText}`);
       }
 
-      const responseBody = await response.json();
+      // FALLBACK TO IMAGEN 3 GENERATE 001 IF 002 SILENTLY FAILS OR BLOCKS
       if (!responseBody.predictions || responseBody.predictions.length === 0) {
-        throw new Error('No predictions returned from Vertex AI capability model');
+        console.warn("[textureGeneratorFlow] ⚠️ Imagen 3 (002) returned empty predictions. Raw:", rawText);
+        console.log(`[textureGeneratorFlow] Retrying with Imagen 3 (001) with 1:1 aspect ratio...`);
+        
+        const fallbackUrl = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
+        const fallbackResponse = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            Authorization: `Bearer ${accessToken.token}`,
+          },
+          body: JSON.stringify({
+            instances: [
+              { prompt: `Seamless tileable material texture: ${prompt}` }
+            ],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: "1:1", // Fallback a 1:1 por si la relación de aspecto estaba causando problemas
+            }
+          }),
+          cache: 'no-store',
+        });
+
+        if (!fallbackResponse.ok) {
+          const errText = await fallbackResponse.text();
+          throw new Error(`Fallback Imagen 3 (001) API returned error: ${fallbackResponse.status} ${fallbackResponse.statusText} - ${errText}`);
+        }
+
+        const fallbackRawText = await fallbackResponse.text();
+        try { responseBody = JSON.parse(fallbackRawText); } catch(e) { responseBody = {}; }
+
+        if (!responseBody.predictions || responseBody.predictions.length === 0) {
+          throw new Error(`No predictions returned from Vertex AI model even after fallback. Raw response: ${fallbackRawText}`);
+        }
       }
 
       const generatedBase64 = responseBody.predictions[0].bytesBase64Encoded;
       return { base64Image: generatedBase64 };
     } catch (error: any) {
-      console.error('[textureGeneratorFlow] Error during Image-to-Image prediction:', error.message ?? error);
-      throw new Error(`Failed to generate texture [Image-to-Image]: ${error.message ?? 'Unexpected error'}`);
+      console.error('[textureGeneratorFlow] Error during Text-to-Image prediction:', error.message ?? error);
+      throw new Error(`Failed to generate texture [Text-to-Image]: ${error.message ?? 'Unexpected error'}`);
     }
   }
 );

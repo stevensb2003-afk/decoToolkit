@@ -25,6 +25,7 @@ interface UseCanvasMouseEventsProps {
   surfaceHeight: number;
   currentObstaclePoints: Point[];
   isGridSnapActive: boolean;
+  showGrid: boolean;
   gridSpacing: number;
   canvasRef: React.RefObject<HTMLDivElement>;
 
@@ -63,7 +64,6 @@ interface UseCanvasMouseEventsProps {
 
   setGhostPiecePos: (pt: Point | null) => void;
   setSeriesGhostPieces: (pts: Point[]) => void;
-  ghostPiecePos: Point | null;
 
   handleCloseSnapChange: (isClose: boolean) => void;
   getMousePos: (e: MouseEvent | React.MouseEvent<HTMLDivElement>) => Point;
@@ -75,14 +75,14 @@ export function useCanvasMouseEvents(opts: UseCanvasMouseEventsProps) {
     isDrawingObstacle, editingObstacleId, activeBrush, brushAngle,
     pivotPoint, isObstacleSnapActive, isRotating, pieces, obstacles,
     surfaceWidth, surfaceHeight, currentObstaclePoints, isGridSnapActive,
-    gridSpacing, canvasRef, onCurrentObstaclePointsChange, onObstacleAnchorIndexChange,
+    showGrid, gridSpacing, canvasRef, onCurrentObstaclePointsChange, onObstacleAnchorIndexChange,
     isPanningRef, lastPanPos, isMouseDownRef, dragStartPos, isErasingRef,
     pendingErasures, isDrawingMeasureAreaRef, measureStartRef, isSeriesPlacingRef,
     seriesGhostPiecesRef, isClosedSnapRef, setHoveredPieceId, setErasedPieceIds,
     erasedPieceIds, previewAreaBoxRef, previewAreaTextRef, currentVertexPoints,
     setCurrentVertexPoints, setSavedVertexFigures, setVertexMeasurements,
     setPreviewVertexPoint, setPreviewObstaclePoint, setCursorCoords,
-    orthogonalLock, setGhostPiecePos, setSeriesGhostPieces, ghostPiecePos,
+    orthogonalLock, setGhostPiecePos, setSeriesGhostPieces,
     handleCloseSnapChange, getMousePos
   } = opts;
 
@@ -111,7 +111,7 @@ export function useCanvasMouseEvents(opts: UseCanvasMouseEventsProps) {
       if (isMouseDownRef.current) return;
       isMouseDownRef.current = true;
       let snapPos = { ...pos };
-      if (isGridSnapActive && gridSpacing > 0) {
+      if (isGridSnapActive && showGrid && gridSpacing > 0) {
         snapPos.x = Math.round(snapPos.x / gridSpacing) * gridSpacing;
         // Medir snap vertical desde la base inferior
         const distFromBottom = surfaceHeight - snapPos.y;
@@ -204,7 +204,7 @@ export function useCanvasMouseEvents(opts: UseCanvasMouseEventsProps) {
     isHandMode, getMousePos, isDrawingObstacle, editingObstacleId, currentObstaclePoints,
     scale, pieces, obstacles, surfaceWidth, surfaceHeight, isObstacleSnapActive, handleCloseSnapChange, onCurrentObstaclePointsChange, onObstacleAnchorIndexChange,
     activeBrush, isRotating, pivotPoint, brushAngle, isEraserMode,
-    erasedPieceIds, isMeasureMode, measureMode, currentVertexPoints, isGridSnapActive, gridSpacing,
+    erasedPieceIds, isMeasureMode, measureMode, currentVertexPoints, isGridSnapActive, showGrid, gridSpacing,
     canvasRef, isPanningRef, lastPanPos, isMouseDownRef, dragStartPos, isErasingRef, pendingErasures, setErasedPieceIds, isDrawingMeasureAreaRef, measureStartRef, previewAreaBoxRef, isClosedSnapRef, setSavedVertexFigures, setVertexMeasurements, setCurrentVertexPoints, setPreviewVertexPoint
   ]);
 
@@ -306,7 +306,7 @@ export function useCanvasMouseEvents(opts: UseCanvasMouseEventsProps) {
 
     if (activeBrush && !isRotating) {
       let snapPos = { ...rawPos };
-      if (isGridSnapActive && gridSpacing > 0) {
+      if (isGridSnapActive && showGrid && gridSpacing > 0) {
         snapPos.x = Math.round(snapPos.x / gridSpacing) * gridSpacing;
         // Medir snap vertical desde la base inferior
         const distFromBottom = surfaceHeight - snapPos.y;
@@ -350,10 +350,10 @@ export function useCanvasMouseEvents(opts: UseCanvasMouseEventsProps) {
         setGhostPiecePos(snappedCenter);
       }
     } else {
-      if (ghostPiecePos) setGhostPiecePos(null);
+      setGhostPiecePos(null);
     }
   }, [
-    getMousePos, canvasRef, scale, surfaceWidth, surfaceHeight, isDrawingObstacle, setPreviewObstaclePoint, setPreviewVertexPoint, isDrawingMeasureAreaRef, measureStartRef, pieces, obstacles, isObstacleSnapActive, handleCloseSnapChange, previewAreaBoxRef, previewAreaTextRef, setCursorCoords, currentObstaclePoints, orthogonalLock, isMeasureMode, measureMode, currentVertexPoints, isEraserMode, erasedPieceIds, setHoveredPieceId, isErasingRef, pendingErasures, setErasedPieceIds, activeBrush, isRotating, isGridSnapActive, gridSpacing, brushAngle, pivotPoint, isMouseDownRef, dragStartPos, isSeriesPlacingRef, seriesGhostPiecesRef, setSeriesGhostPieces, setGhostPiecePos, ghostPiecePos
+    getMousePos, canvasRef, scale, surfaceWidth, surfaceHeight, isDrawingObstacle, setPreviewObstaclePoint, setPreviewVertexPoint, isDrawingMeasureAreaRef, measureStartRef, pieces, obstacles, isObstacleSnapActive, handleCloseSnapChange, previewAreaBoxRef, previewAreaTextRef, setCursorCoords, currentObstaclePoints, orthogonalLock, isMeasureMode, measureMode, currentVertexPoints, isEraserMode, erasedPieceIds, setHoveredPieceId, isErasingRef, pendingErasures, setErasedPieceIds, activeBrush, isRotating, isGridSnapActive, showGrid, gridSpacing, brushAngle, pivotPoint, isMouseDownRef, dragStartPos, isSeriesPlacingRef, seriesGhostPiecesRef, setSeriesGhostPieces, setGhostPiecePos
   ]);
 
   const handleMouseLeave = useCallback(() => {

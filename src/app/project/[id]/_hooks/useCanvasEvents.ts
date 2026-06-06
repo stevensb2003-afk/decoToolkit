@@ -46,6 +46,7 @@ interface UseCanvasEventsOptions {
   obstacleAnchorIndex: number;
   onBrushAngleChange?: (angle: number) => void;
   isGridSnapActive: boolean;
+  showGrid: boolean;
   gridSpacing: number;
 }
 
@@ -59,7 +60,7 @@ export function useCanvasEvents(opts: UseCanvasEventsOptions) {
     onPlacePiece, onBatchDeletePieces, onCurrentObstaclePointsChange,
     onObstacleAnchorIndexChange, onFinishObstacleDrawing,
     onRotationAnchorChange, onPreviewChange, viewportRef, previewSegment, obstacleAnchorIndex, onBrushAngleChange,
-    isGridSnapActive, gridSpacing,
+    isGridSnapActive, showGrid, gridSpacing,
   } = opts;
 
   // --- Refs (no-render path) ---
@@ -231,16 +232,17 @@ export function useCanvasEvents(opts: UseCanvasEventsOptions) {
     scale, isHandMode, isEraserMode, isMeasureMode, measureMode,
     isDrawingObstacle, editingObstacleId, activeBrush, brushAngle,
     pivotPoint, isObstacleSnapActive, isRotating, pieces, obstacles,
-    surfaceWidth, surfaceHeight, currentObstaclePoints, isGridSnapActive,
-    gridSpacing, canvasRef, onCurrentObstaclePointsChange, onObstacleAnchorIndexChange,
+    surfaceWidth, surfaceHeight, currentObstaclePoints,
+    canvasRef, onCurrentObstaclePointsChange, onObstacleAnchorIndexChange,
     isPanningRef, lastPanPos, isMouseDownRef, dragStartPos, isErasingRef,
     pendingErasures, isDrawingMeasureAreaRef, measureStartRef, isSeriesPlacingRef,
     seriesGhostPiecesRef, isClosedSnapRef, setHoveredPieceId, setErasedPieceIds,
     erasedPieceIds, previewAreaBoxRef, previewAreaTextRef, currentVertexPoints,
     setCurrentVertexPoints, setSavedVertexFigures, setVertexMeasurements,
     setPreviewVertexPoint, setPreviewObstaclePoint, setCursorCoords,
-    orthogonalLock, setGhostPiecePos, setSeriesGhostPieces, ghostPiecePos,
-    handleCloseSnapChange, getMousePos
+    orthogonalLock, setGhostPiecePos, setSeriesGhostPieces,
+    handleCloseSnapChange, getMousePos,
+    isGridSnapActive, showGrid, gridSpacing,
   });
 
   return {

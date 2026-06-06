@@ -8,7 +8,6 @@ import { useToast } from '@/hooks/use-toast';
 import type { MaterialTexture } from '@/lib/types';
 import { resizeForAI } from '@/lib/perspective-warp';
 import type { Corners } from '@/lib/perspective-warp';
-import { getAuth } from 'firebase/auth';
 import { PerspectiveCropDialog } from '@/components/ui/PerspectiveCropDialog';
 
 interface Props {
@@ -19,7 +18,7 @@ interface Props {
   onTextureChange: (texture: MaterialTexture | null) => void;
 }
 
-type Phase = 'idle' | 'detecting' | 'reviewing' | 'uploading' | 'done';
+type Phase = 'idle' | 'reviewing' | 'uploading' | 'done';
 
 const MAX_SIZE_BYTES = 15 * 1024 * 1024;
 
@@ -27,32 +26,12 @@ function extractFileName(storagePath: string): string {
   return storagePath.split('/').pop() ?? storagePath;
 }
 
-const FULL_IMAGE_CORNERS: Corners = {
-  topLeft: { x: 0, y: 0 },
-  topRight: { x: 1, y: 0 },
-  bottomRight: { x: 1, y: 1 },
-  bottomLeft: { x: 0, y: 1 },
+const DEFAULT_CORNERS: Corners = {
+  topLeft: { x: 0.1, y: 0.1 },
+  topRight: { x: 0.9, y: 0.1 },
+  bottomRight: { x: 0.9, y: 0.9 },
+  bottomLeft: { x: 0.1, y: 0.9 },
 };
-
-async function detectCorners(base64: string, mimeType: string): Promise<{ corners: Corners; metadata?: any; fallback?: boolean } | null> {
-  try {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) return null;
-    const token = await user.getIdToken();
-
-    const res = await fetch('/api/detect-corners', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ imageBase64: base64, mimeType }),
-    });
-
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
 
 export function DefaultMaterialTextureUploader({
   materialId,
@@ -88,34 +67,13 @@ export function DefaultMaterialTextureUploader({
       return;
     }
 
-    setPhase('detecting');
-    setProgress(15);
-
-    try {
-      const { base64, mimeType } = await resizeForAI(file, 1024);
-      const aiResult = await detectCorners(base64, mimeType);
-
-      const detectedCorners = aiResult && !aiResult.fallback && aiResult.corners ? aiResult.corners : null;
-      setCropData({
-        file,
-        previewUrl: `data:${mimeType};base64,${base64}`,
-        corners: detectedCorners ?? FULL_IMAGE_CORNERS,
-        metadata: aiResult?.metadata,
-      });
-      setPhase('reviewing');
-      setProgress(30);
-    } catch (err) {
-      console.warn('[DefaultMaterialTextureUploader] AI detection failed, opening dialog with full image:', err);
-      const previewUrl = URL.createObjectURL(file);
-      setCropData({
-        file,
-        previewUrl,
-        corners: FULL_IMAGE_CORNERS,
-        metadata: undefined,
-      });
-      setPhase('reviewing');
-      setProgress(30);
-    }
+    setCropData({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      corners: DEFAULT_CORNERS,
+      metadata: undefined,
+    });
+    setPhase('reviewing');
   }, [toast]); // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const processAndUpload = async (fileToUpload: File, metadata?: any) => {
@@ -165,7 +123,6 @@ export function DefaultMaterialTextureUploader({
   // ── Loading state ──────────────────────────────────────────────────────────
   if (phase !== 'idle' && phase !== 'done' && phase !== 'reviewing') {
     const labels: Record<string, string> = {
-      detecting: '🤖 Detectando bordes con IA...',
       uploading: '☁️ Subiendo textura...',
     };
     return (
@@ -199,11 +156,11 @@ export function DefaultMaterialTextureUploader({
           <p className="text-[10px] text-zinc-500 mt-0.5">
             {currentTexture.originalWidth > 0
               ? `${currentTexture.originalWidth}×${currentTexture.originalHeight}px`
-              : 'Textura procesada con IA'}
+              : 'Textura guardada'}
           </p>
           <div className="flex items-center gap-1 mt-1">
             <Sparkles className="h-2.5 w-2.5 text-primary/70" />
-            <span className="text-[9px] text-primary/70 font-medium">Procesada con IA</span>
+            <span className="text-[9px] text-primary/70 font-medium">Corrección de perspectiva</span>
           </div>
         </div>
         <Button
@@ -232,10 +189,10 @@ export function DefaultMaterialTextureUploader({
       <div className="rounded-xl border border-dashed border-zinc-700/80 bg-zinc-900/30 p-4 flex flex-col items-center gap-3">
         <div className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-primary/80" />
-          <p className="text-[11px] font-medium text-zinc-400">Textura con corrección de perspectiva IA</p>
+          <p className="text-[11px] font-medium text-zinc-400">Ajuste de perspectiva manual</p>
         </div>
         <p className="text-[10px] text-zinc-600 text-center max-w-[220px]">
-          Toma una foto a la lámina real. La IA detectará sus bordes y corregirá la perspectiva automáticamente.
+          Toma una foto a la lámina real y ajusta los 4 puntos de las esquinas.
         </p>
         <div className="flex gap-2">
           <Button
@@ -281,8 +238,13 @@ export function DefaultMaterialTextureUploader({
           materialWidth={materialWidth}
           materialHeight={materialHeight}
           metadata={cropData.metadata}
-          onConfirm={(finalFile) => {
-            processAndUpload(finalFile, cropData.metadata);
+          onConfirm={(finalFile, physicalWidth, physicalHeight) => {
+            const finalMetadata = {
+              ...cropData.metadata,
+              physicalWidth,
+              physicalHeight
+            };
+            processAndUpload(finalFile, finalMetadata);
           }}
         />
       )}

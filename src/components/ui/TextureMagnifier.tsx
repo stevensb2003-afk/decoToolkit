@@ -6,20 +6,33 @@ const ZOOM = 3;
 interface TextureMagnifierProps {
   previewUrl: string;
   magnifierPos: { x: number; y: number };
+  containerWidth: number;
+  containerHeight: number;
 }
 
-export function TextureMagnifier({ previewUrl, magnifierPos }: TextureMagnifierProps) {
-  // Pixel-precise calculation: centers crosshair exactly on the dragged corner
-  const posX = MAGNIFIER_SIZE / 2 - (magnifierPos.x / 100) * MAGNIFIER_SIZE * ZOOM;
-  const posY = MAGNIFIER_SIZE / 2 - (magnifierPos.y / 100) * MAGNIFIER_SIZE * ZOOM;
+/**
+ * Pixel-perfect magnifier.
+ * Uses the REAL container pixel dimensions so the crosshair maps to the exact
+ * cursor position, regardless of the image aspect ratio or object-contain letterboxing.
+ */
+export function TextureMagnifier({ previewUrl, magnifierPos, containerWidth, containerHeight }: TextureMagnifierProps) {
+  const zoomedW = containerWidth * ZOOM;
+  const zoomedH = containerHeight * ZOOM;
+
+  // Center of the magnifier circle = cursor position inside the zoomed virtual canvas
+  const bgLeft = MAGNIFIER_SIZE / 2 - (magnifierPos.x / 100) * zoomedW;
+  const bgTop  = MAGNIFIER_SIZE / 2 - (magnifierPos.y / 100) * zoomedH;
+
+  // Magnifier is statically positioned in the absolute center of the image container
+  const magLeft = containerWidth / 2 - MAGNIFIER_SIZE / 2;
+  const magTop = containerHeight / 2 - MAGNIFIER_SIZE / 2;
 
   return (
     <div
       className="absolute z-30 pointer-events-none"
       style={{
-        left: `${magnifierPos.x}%`,
-        top: `${magnifierPos.y}%`,
-        transform: 'translate(-50%, -130%)',
+        left: `${magLeft}px`,
+        top: `${magTop}px`,
       }}
     >
       <div
@@ -31,17 +44,26 @@ export function TextureMagnifier({ previewUrl, magnifierPos }: TextureMagnifierP
           boxShadow: '0 0 0 1px rgba(0,0,0,0.5), 0 8px 32px rgba(0,0,0,0.8)',
         }}
       >
+        {/* Zoomed image — uses real container size × ZOOM to preserve object-contain letterboxing */}
         <div
           style={{
             position: 'absolute',
-            inset: 0,
-            backgroundImage: `url(${previewUrl})`,
-            backgroundSize: `${MAGNIFIER_SIZE * ZOOM}px ${MAGNIFIER_SIZE * ZOOM}px`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: `${posX}px ${posY}px`,
+            left: bgLeft,
+            top: bgTop,
+            width: zoomedW,
+            height: zoomedH,
           }}
-        />
-        {/* Crosshair */}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewUrl}
+            alt=""
+            className="w-full h-full object-contain"
+            style={{ pointerEvents: 'none' }}
+          />
+        </div>
+
+        {/* Crosshair — always centered in the circle = exact cursor pixel */}
         <div className="absolute inset-0 pointer-events-none">
           <div style={{ position: 'absolute', width: '100%', height: 1, background: 'rgba(16,185,129,0.8)', top: '50%' }} />
           <div style={{ position: 'absolute', height: '100%', width: 1, background: 'rgba(16,185,129,0.8)', left: '50%' }} />

@@ -15,6 +15,8 @@ export interface MaterialTexture {
     pattern?: string;
     finish?: string;
     seamlessPrompt?: string;
+    physicalWidth?: number;  // The real-world width this texture represents (e.g. 16cm)
+    physicalHeight?: number; // The real-world height this texture represents (e.g. 30cm)
   };
 }
 

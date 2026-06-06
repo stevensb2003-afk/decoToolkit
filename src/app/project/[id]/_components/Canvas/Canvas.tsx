@@ -108,6 +108,7 @@ export function Canvas({
     obstacleAnchorIndex,
     onBrushAngleChange,
     isGridSnapActive,
+    showGrid,
     gridSpacing,
   });
 

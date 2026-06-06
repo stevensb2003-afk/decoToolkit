@@ -4,13 +4,13 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 
 // ---- Output Schema ----
-const CornerSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
-
+// IMPORTANT: Each corner field must be inlined (NOT referencing a shared const).
+// Genkit converts shared Zod object refs to JSON $ref, which Vertex AI rejects with HTTP 400.
 export const CornersSchema = z.object({
-  topLeft:     CornerSchema,
-  topRight:    CornerSchema,
-  bottomRight: CornerSchema,
-  bottomLeft:  CornerSchema,
+  topLeft:     z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+  topRight:    z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+  bottomRight: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+  bottomLeft:  z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
   confidence:  z.number().min(0).max(1).describe('Confidence score 0-1 of the detection'),
   fallback:    z.boolean().describe('True ONLY if it is a macro flat-lay photo with zero background visible'),
   metadata: z.object({
@@ -39,7 +39,7 @@ export const textureCornerDetector = ai.defineFlow(
   },
   async ({ imageBase64, mimeType }) => {
     const { output } = await ai.generate({
-      model: 'vertexai/gemini-2.5-pro',
+      model: 'googleai/gemini-2.5-pro',
       output: { schema: CornersSchema },
       prompt: [
         {
