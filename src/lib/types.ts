@@ -131,6 +131,12 @@ export interface PlacedPiece {
   height: number; // in cm;
   rotation: number; // in degrees
   fragments: Fragment[];
+  // Original placement metadata — used to anchor texture correctly even after clipping
+  originalX?: number;        // center x of the full sheet at time of placement (cm)
+  originalY?: number;        // center y of the full sheet at time of placement (cm)
+  originalWidth?: number;    // full sheet width at time of placement (cm)
+  originalHeight?: number;   // full sheet height at time of placement (cm)
+  originalRotation?: number; // brush angle at time of placement (degrees)
   createdAt: FieldValue | Date | Timestamp;
   sourceSheetId?: string;
 }

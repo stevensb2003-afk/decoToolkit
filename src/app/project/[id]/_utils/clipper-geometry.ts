@@ -91,7 +91,7 @@ export function calculatePlacementFragments(
     
     const filledSolution: ClipperLib.Paths = [];
     clipper.Execute(ClipperLib.ClipType.ctDifference, filledSolution, ClipperLib.PolyFillType.pftEvenOdd, ClipperLib.PolyFillType.pftEvenOdd);
-    clipperSubjectPaths = filledSolution;
+    clipperSubjectPaths = ClipperLib.Clipper.CleanPolygons(filledSolution, 100);
     clipper.Clear();
   }
 
@@ -104,7 +104,7 @@ export function calculatePlacementFragments(
       
       const obstacleSolution: ClipperLib.Paths = [];
       clipper.Execute(ClipperLib.ClipType.ctDifference, obstacleSolution, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
-      clipperSubjectPaths = obstacleSolution;
+      clipperSubjectPaths = ClipperLib.Clipper.CleanPolygons(obstacleSolution, 100);
       clipper.Clear();
     }
   }
@@ -208,7 +208,8 @@ export function calculateOffcuts(
   const offcutSolution: ClipperLib.Paths = [];
   clipper.Execute(ClipperLib.ClipType.ctDifference, offcutSolution, ClipperLib.PolyFillType.pftEvenOdd, ClipperLib.PolyFillType.pftEvenOdd);
 
-  const simplifiedOffcutSolution = simplifyPaths(offcutSolution);
+  const cleanedSolution = ClipperLib.Clipper.CleanPolygons(offcutSolution, 100);
+  const simplifiedOffcutSolution = simplifyPaths(cleanedSolution);
   ClipperLib.JS.ScaleDownPaths(simplifiedOffcutSolution, scaleFactor);
 
   const remnants: Remnant[] = [];

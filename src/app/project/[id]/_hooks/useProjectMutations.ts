@@ -50,7 +50,7 @@ export function useProjectMutations(
     const newPiecesData: Omit<PlacedPiece, 'id'>[] = [];
     const allOffcuts: Remnant[] = [];
 
-    validPlacements.forEach(({ groupedFragments, offcuts, currentSourceSheetId }) => {
+    validPlacements.forEach(({ idealPiece, groupedFragments, offcuts, currentSourceSheetId }) => {
       const placementId = crypto.randomUUID();
       groupedFragments.forEach(fragmentGroup => {
         const allPoints = fragmentGroup.flatMap(f => f.points);
@@ -62,6 +62,12 @@ export function useProjectMutations(
           width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys),
           rotation: 0, fragments: fragmentGroup,
           createdAt: serverTimestamp(), sourceSheetId: currentSourceSheetId,
+          // Store the original ideal-piece center/size/rotation so textures can be anchored per-piece
+          originalX: idealPiece.x,
+          originalY: idealPiece.y,
+          originalWidth: idealPiece.width,
+          originalHeight: idealPiece.height,
+          originalRotation: idealPiece.rotation,
         } as Omit<PlacedPiece, 'id'>);
       });
       allOffcuts.push(...offcuts);

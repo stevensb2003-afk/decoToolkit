@@ -339,26 +339,32 @@ export async function generateProjectPDF(data: {
                         if (p.y < minY) minY = p.y;
                         if (p.y > maxY) maxY = p.y;
                     });
-                    
-                    cx = drawX + ((minX + maxX) / 2) * scale;
-                    cy = drawY + ((minY + maxY) / 2) * scale;
 
-                    const rad = (piece.rotation || 0) * Math.PI / 180;
+                    // Anchor the texture to the original sheet center (per-piece),
+                    // falling back to the bounding box center for legacy pieces.
+                    const anchorCmX = piece.originalX ?? (minX + maxX) / 2;
+                    const anchorCmY = piece.originalY ?? (minY + maxY) / 2;
+
+                    cx = drawX + anchorCmX * scale;
+                    cy = drawY + anchorCmY * scale;
+
+                    const pieceRotation = piece.originalRotation ?? (piece.rotation || 0);
+                    const rad = pieceRotation * Math.PI / 180;
                     cos = Math.cos(rad);
                     sin = Math.sin(rad);
 
                     pw = material.width * scale;
                     ph = material.height * scale;
 
+                    // Expand the grid enough to cover the entire piece with tiles
                     const radiusX = (maxX - minX) / 2;
                     const radiusY = (maxY - minY) / 2;
-                    const maxRadius = Math.sqrt(radiusX*radiusX + radiusY*radiusY);
+                    const maxRadius = Math.sqrt(radiusX * radiusX + radiusY * radiusY);
 
-                    // Expand the grid enough to cover the rotated piece
-                    startGridX = Math.floor(((cx - maxRadius * scale) - drawX) / pw) - 1;
-                    endGridX = Math.ceil(((cx + maxRadius * scale) - drawX) / pw) + 1;
-                    startGridY = Math.floor(((cy - maxRadius * scale) - drawY) / ph) - 1;
-                    endGridY = Math.ceil(((cy + maxRadius * scale) - drawY) / ph) + 1;
+                    startGridX = Math.floor(-maxRadius * scale / pw) - 1;
+                    endGridX   = Math.ceil( maxRadius * scale / pw) + 1;
+                    startGridY = Math.floor(-maxRadius * scale / ph) - 1;
+                    endGridY   = Math.ceil( maxRadius * scale / ph) + 1;
                 }
             }
 
@@ -379,20 +385,18 @@ export async function generateProjectPDF(data: {
                     (doc as any).clip(); // Mask to the piece fragment
                     (doc as any).discardPath(); // End path for the clip operator
                     
-                    // Tile the image to fill the bounding box, rotating each tile
+                    // Tile in local space relative to the per-piece anchor (cx, cy),
+                    // then rotate and translate into PDF absolute coordinates.
                     for (let col = startGridX; col <= endGridX; col++) {
                         for (let row = startGridY; row <= endGridY; row++) {
-                            const tileX = drawX + col * pw;
-                            const tileY = drawY + row * ph;
-                            
-                            const dx = tileX - cx;
-                            const dy = tileY - cy;
-                            
-                            const rotatedX = cx + dx * cos - dy * sin;
-                            const rotatedY = cy + dx * sin + dy * cos;
-
-                            // addImage(..., angle) internally rotates around the (x,y) passed
-                            doc.addImage(textureDataUrl, 'JPEG', rotatedX, rotatedY, pw, ph, material.id, 'FAST', piece.rotation || 0);
+                            // Local tile offset from the anchor
+                            const localX = col * pw;
+                            const localY = row * ph;
+                            // Rotate around anchor
+                            const rotatedX = cx + localX * cos - localY * sin;
+                            const rotatedY = cy + localX * sin + localY * cos;
+                            const pieceRotation = piece.originalRotation ?? (piece.rotation || 0);
+                            doc.addImage(textureDataUrl, 'JPEG', rotatedX, rotatedY, pw, ph, material.id, 'FAST', pieceRotation);
                         }
                     }
 

@@ -52,29 +52,39 @@ export function PiecesOverlay({
     <g>
       {patternDefs.length > 0 && (
         <defs>
-          {patternDefs.map(def => (
-            <pattern
-              key={def.patternId}
-              id={def.patternId}
-              patternUnits="userSpaceOnUse"
-              width={def.patternWidth}
-              height={def.patternHeight}
-              patternTransform={
-                def.rotation !== 0
-                  ? `rotate(${def.rotation}, ${def.cx}, ${def.cy})`
-                  : undefined
-              }
-            >
-              <image
-                href={def.textureUrl}
-                x={0}
-                y={0}
-                width={def.patternWidth}
-                height={def.patternHeight}
-                preserveAspectRatio="none"
-              />
-            </pattern>
-          ))}
+          {patternDefs.map(def => {
+            // The patternTransform positions the pattern tile's center at the
+            // original sheet center, then rotates by the brush angle.
+            //
+            // SVG <pattern> at patternUnits="userSpaceOnUse":
+            //   – by default the tile starts at (0,0) of user space (the canvas origin).
+            //   – We translate to originX/Y so the tile is centred on the piece's sheet.
+            //   – Then rotate around that same point.
+            //   – Finally offset by -w/2, -h/2 so the image inside the tile
+            //     is painted centred (the pattern tile goes from -w/2 to w/2).
+            const { patternWidth: w, patternHeight: h, originX, originY, rotation } = def;
+            const transform =
+              `translate(${originX}, ${originY}) rotate(${rotation}) translate(${-w / 2}, ${-h / 2})`;
+            return (
+              <pattern
+                key={def.patternId}
+                id={def.patternId}
+                patternUnits="userSpaceOnUse"
+                width={w}
+                height={h}
+                patternTransform={transform}
+              >
+                <image
+                  href={def.textureUrl}
+                  x={0}
+                  y={0}
+                  width={w}
+                  height={h}
+                  preserveAspectRatio="none"
+                />
+              </pattern>
+            );
+          })}
         </defs>
       )}
 

@@ -34,6 +34,8 @@ declare module 'clipper-lib' {
     static GetBounds(paths: Paths): IntRect;
     static Area(path: Path): number;
     static PointInPolygon(pt: IntPoint, path: Path): number;
+    static CleanPolygon(path: Path, distance: number): Path;
+    static CleanPolygons(paths: Paths, distance: number): Paths;
   }
 
   // --- Helper Functions (JS) ---

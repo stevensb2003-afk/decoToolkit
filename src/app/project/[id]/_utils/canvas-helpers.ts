@@ -158,7 +158,27 @@ export function computeGhostPos(
     bottomLeft: { x: -w / 2, y: h / 2 },
     bottomRight: { x: w / 2, y: h / 2 },
   };
-  const pv = pivotLocalMap[pivotPoint];
+  let pv = pivotLocalMap[pivotPoint];
+
+  // If remnant, grab the physical vertex closest to the selected pivot corner
+  if (activeBrush.type === 'remnant') {
+    const frags = activeBrush.fragments || [{ id: 'legacy', points: activeBrush.points || [] }];
+    const pts = frags.flatMap(f => f.points);
+    if (pts.length > 0) {
+      const relPoints = pts.map(p => ({ x: p.x - activeBrush.x, y: p.y - activeBrush.y }));
+      let closest = relPoints[0];
+      let minDist = Infinity;
+      for (const p of relPoints) {
+        const dist = (p.x - pv.x) ** 2 + (p.y - pv.y) ** 2;
+        if (dist < minDist) {
+          minDist = dist;
+          closest = p;
+        }
+      }
+      pv = closest;
+    }
+  }
+
   const rpx = pv.x * cos - pv.y * sin;
   const rpy = pv.x * sin + pv.y * cos;
   return { x: rawPos.x - rpx, y: rawPos.y - rpy };
