@@ -353,8 +353,10 @@ export async function generateProjectPDF(data: {
                     cos = Math.cos(rad);
                     sin = Math.sin(rad);
 
-                    pw = material.width * scale;
-                    ph = material.height * scale;
+                    const physicalWidth = material.texture?.metadata?.physicalWidth ?? material.width;
+                    const physicalHeight = material.texture?.metadata?.physicalHeight ?? material.height;
+                    pw = physicalWidth * scale;
+                    ph = physicalHeight * scale;
 
                     // Expand the grid enough to cover the entire piece with tiles
                     const radiusX = (maxX - minX) / 2;
