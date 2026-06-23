@@ -44,3 +44,5 @@ firebase-debug.log*
 # GCP Credentials
 src/config/gcp-key.json
 
+# Nuevos Productos Module
+/moduloNuevosProductos/

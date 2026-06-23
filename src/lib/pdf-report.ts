@@ -391,9 +391,9 @@ export async function generateProjectPDF(data: {
                     // then rotate and translate into PDF absolute coordinates.
                     for (let col = startGridX; col <= endGridX; col++) {
                         for (let row = startGridY; row <= endGridY; row++) {
-                            // Local tile offset from the anchor
-                            const localX = col * pw;
-                            const localY = row * ph;
+                            // Local tile offset from the anchor, centering the grid
+                            const localX = col * pw - pw / 2;
+                            const localY = row * ph - ph / 2;
                             // Rotate around anchor
                             const rotatedX = cx + localX * cos - localY * sin;
                             const rotatedY = cy + localX * sin + localY * cos;

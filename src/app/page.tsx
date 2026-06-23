@@ -4,7 +4,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calculator, FileText, FolderKanban } from "lucide-react";
+import { Calculator, FileText, FolderKanban, LayoutList } from "lucide-react";
 import { useUser } from "@/firebase";
 import { Header } from "@/components/layout/header";
 import { Loader } from "lucide-react";
@@ -157,6 +157,14 @@ export default function WelcomePage() {
                 icon={<CreditCard className="h-7 w-7 md:h-10 md:w-10 text-indigo-600" />}
                 title="Cobros Tilopay"
                 description="Genera y gestiona links de pago rápidos."
+              />
+            )}
+            {(isAdmin || allowedModules.includes('inventory')) && (
+              <ToolCard
+                href="/products"
+                icon={<LayoutList className="h-7 w-7 md:h-10 md:w-10 text-emerald-500" />}
+                title="Catálogo"
+                description="Registra materiales y genera importaciones para Alegra."
               />
             )}
           </div>

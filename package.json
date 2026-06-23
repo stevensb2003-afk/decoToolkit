@@ -9,7 +9,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:base": "node scripts/seed-catalog-base.js",
+    "seed:inventory": "node scripts/seed-inventory-products.js",
+    "seed:inventory:dry": "node scripts/seed-inventory-products.js --dry-run",
+    "seed:inventory:force": "node scripts/seed-inventory-products.js --force"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
@@ -67,6 +71,7 @@
     "reactfire": "^4.2.3",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

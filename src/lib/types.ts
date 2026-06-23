@@ -348,3 +348,62 @@ export interface ProcessCategory {
   createdAt: Timestamp | Date;
   updatedAt: Timestamp | Date;
 }
+
+// ---- Catalog Products Module (independiente de /materials) ----
+export type ProductOrigin = 'imported' | 'local' | 'beam';
+export type ProductStatus = 'active' | 'draft' | 'archived';
+export type AlegraProductType = 'fe' | 'no-inv' | 'service';
+
+export interface SubSeries {
+  id: string;   // e.g. "100", "200"
+  label: string; // e.g. "WPC 15cm"
+  digit: number; // D2 digit value
+}
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  sku_prefix: string;
+  has_sub_series: boolean;
+  sub_series?: SubSeries[];
+  sku_series: Record<string, { last_consecutive: number }>;
+  alegra_product_type: AlegraProductType;
+  default_cabys: string;
+  default_unit: string;
+  order: number;
+}
+
+export interface CabysCode {
+  code: string;
+  description: string;
+}
+
+export interface CatalogProduct {
+  id: string;
+  sku: string;
+  name: string;
+  description?: string;
+  category_id: string;
+  category_name: string;
+  cabys: string;
+  origin: ProductOrigin;
+  sub_series?: string;
+  tax_name: string;
+  tax_percentage: number;
+  price_total: number;
+  price_base: number;
+  price_cost?: number;
+  unit: string;
+  alegra_product_type: AlegraProductType;
+  status: ProductStatus;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+  createdBy: string;
+  quantity?: number; // Cantidad Inicial en Bodega — solo para exportar al Excel de Alegra
+  is_exported?: boolean; // Indica si el producto ya fue exportado a Excel
+}
+
+export interface ExportQueueItem {
+  product: CatalogProduct;
+  quantity: number; // Cantidad Inicial en Bodega — solo para el Excel FE, NO se guarda en Firestore
+}

@@ -29,14 +29,28 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { createUser } from '../actions';
-import { Loader, PlusCircle, Package, Wallet, FolderKanban, Calculator, ShieldCheck, Tag, Network } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Loader, PlusCircle, Package, Wallet, FolderKanban,
+  Calculator, ShieldCheck, Tag, Network, CreditCard, CheckCircle2,
+} from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+
+const MODULES = [
+  { id: 'tilopay',             label: 'Tilopay (Pagos)',         icon: CreditCard,    color: 'text-indigo-600' },
+  { id: 'caja',                label: 'Caja y Finanzas',         icon: Wallet,        color: 'text-blue-600'   },
+  { id: 'inventory',           label: 'Catálogo & Inventario',   icon: Package,       color: 'text-emerald-600'},
+  { id: 'projects',            label: 'Gestor de Proyectos',     icon: FolderKanban,  color: 'text-yellow-600' },
+  { id: 'calculator',          label: 'Calculadora de Cortes',   icon: Calculator,    color: 'text-primary'    },
+  { id: 'precios-descuentos',  label: 'Precios & Descuentos',    icon: Tag,           color: 'text-pink-600'   },
+  { id: 'admin',               label: 'Panel de Control',        icon: ShieldCheck,   color: 'text-red-600'    },
+  { id: 'procesos',            label: 'Procesos de Empresa',     icon: Network,       color: 'text-cyan-600'   },
+];
 
 const createUserSchema = z.object({
-  displayName: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
-  email: z.string().email({ message: "Por favor ingresa un correo válido." }),
-  password: z.string().min(6, { message: "La contraseña debe tener al menos 6 caracteres." }),
+  displayName: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
+  email: z.string().email({ message: 'Por favor ingresa un correo válido.' }),
+  password: z.string().min(6, { message: 'La contraseña debe tener al menos 6 caracteres.' }),
   permissions: z.object({
     canManageUsers: z.boolean().default(false),
     canEditStandardMaterials: z.boolean().default(false),
@@ -53,9 +67,9 @@ export function CreateUserDialog() {
   const form = useForm<CreateUserFormValues>({
     resolver: zodResolver(createUserSchema),
     defaultValues: {
-      displayName: "",
-      email: "",
-      password: "",
+      displayName: '',
+      email: '',
+      password: '',
       permissions: {
         canManageUsers: false,
         canEditStandardMaterials: false,
@@ -65,81 +79,88 @@ export function CreateUserDialog() {
   });
 
   const { isSubmitting } = form.formState;
+  const isAdmin = form.watch('permissions.canManageUsers');
 
   async function onSubmit(data: CreateUserFormValues) {
     try {
       const result = await createUser(data);
-
       if (result.success) {
-        toast({
-          title: 'Usuario Creado',
-          description: `Se creó con éxito el usuario ${data.displayName}.`,
-        });
+        toast({ title: 'Usuario Creado', description: `Se creó con éxito el usuario ${data.displayName}.` });
         setOpen(false);
         form.reset();
       } else {
-        toast({
-          title: 'Error al Crear Usuario',
-          description: result.error as string,
-          variant: 'destructive',
-        });
+        toast({ title: 'Error al Crear Usuario', description: result.error as string, variant: 'destructive' });
       }
     } catch (error) {
       console.error(error);
-      toast({
-        title: 'Error',
-        description: 'An unexpected error occurred. Please try again.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Ocurrió un error inesperado. Por favor intenta de nuevo.', variant: 'destructive' });
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <PlusCircle className="mr-2" />
+        <Button className="h-11 sm:h-10 gap-2">
+          <PlusCircle className="h-4 w-4" />
           Crear Usuario
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Crear Nuevo Usuario</DialogTitle>
-          <DialogDescription>
-            Ingresa los detalles del nuevo usuario. No se enviará correo automáticamente, asegúrate de compartir las credenciales de forma segura.
+
+      <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] flex flex-col p-0 rounded-2xl gap-0 overflow-hidden">
+        {/* Header fijo */}
+        <DialogHeader className="px-5 pt-5 pb-4 flex-shrink-0 border-b border-slate-100">
+          <DialogTitle className="text-xl font-bold">Crear Nuevo Usuario</DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground mt-0.5">
+            Ingresa los datos y asigna accesos. Comparte las credenciales de forma segura.
           </DialogDescription>
         </DialogHeader>
+
         <Form {...form}>
           <form
             id="create-user-form"
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4 py-2"
             autoComplete="off"
+            className="flex-1 overflow-hidden flex flex-col"
           >
-            <ScrollArea className="max-h-[60vh] -mr-4 pr-4">
-              <div className="space-y-4 py-2">
+            {/* Cuerpo con scroll */}
+            <ScrollArea className="flex-1 overflow-auto">
+              <div className="space-y-5 px-5 py-4 pb-6">
+
+                {/* Nombre */}
                 <FormField
                   control={form.control}
                   name="displayName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nombre Completo</FormLabel>
+                      <FormLabel className="text-sm font-semibold">Nombre Completo</FormLabel>
                       <FormControl>
-                        <Input placeholder="Nombre del usuario" {...field} />
+                        <Input
+                          placeholder="Ej. María García"
+                          className="h-12 sm:h-10 text-base sm:text-sm rounded-xl"
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                {/* Email + Password */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField
                     control={form.control}
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email</FormLabel>
+                        <FormLabel className="text-sm font-semibold">Email</FormLabel>
                         <FormControl>
-                          <Input type="email" placeholder="user@example.com" {...field} autoComplete="new-email" />
+                          <Input
+                            type="email"
+                            placeholder="usuario@empresa.com"
+                            className="h-12 sm:h-10 text-base sm:text-sm rounded-xl"
+                            autoComplete="new-email"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -150,9 +171,15 @@ export function CreateUserDialog() {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel className="text-sm font-semibold">Contraseña</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
+                          <Input
+                            type="password"
+                            placeholder="Mínimo 6 caracteres"
+                            className="h-12 sm:h-10 text-base sm:text-sm rounded-xl"
+                            autoComplete="new-password"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -160,121 +187,133 @@ export function CreateUserDialog() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Roles - Switches */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold">Roles de Sistema</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <FormField
+                      control={form.control}
+                      name="permissions.canManageUsers"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 min-h-[56px]">
+                          <div>
+                            <FormLabel className="text-sm font-medium cursor-pointer">Administrador</FormLabel>
+                            <p className="text-[11px] text-muted-foreground">Acceso total</p>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              disabled={isSubmitting}
+                              className="shrink-0"
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="permissions.canEditStandardMaterials"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3.5 min-h-[56px]">
+                          <div>
+                            <FormLabel className="text-sm font-medium cursor-pointer">Editor Materiales</FormLabel>
+                            <p className="text-[11px] text-muted-foreground">Edita el catálogo base</p>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              disabled={isSubmitting}
+                              className="shrink-0"
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Módulos Permitidos */}
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Módulos Permitidos</p>
+                    <FormDescription className="text-xs mt-0.5">
+                      {isAdmin ? 'El rol Administrador desbloquea todos los módulos.' : 'Selecciona los módulos a los que tendrá acceso.'}
+                    </FormDescription>
+                  </div>
                   <FormField
                     control={form.control}
-                    name="permissions.canManageUsers"
+                    name="permissions.allowedModules"
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-sm">
-                            Administrador
-                          </FormLabel>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            disabled={isSubmitting}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="permissions.canEditStandardMaterials"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-sm">
-                            Editor de Materiales
-                          </FormLabel>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            disabled={isSubmitting}
-                          />
-                        </FormControl>
-                      </FormItem>
+                      <div className="grid grid-cols-2 gap-2">
+                        {MODULES.map((mod) => {
+                          const isChecked = isAdmin || field.value?.includes(mod.id);
+                          const Icon = mod.icon;
+                          return (
+                            <button
+                              key={mod.id}
+                              type="button"
+                              disabled={isSubmitting || isAdmin}
+                              onClick={() => {
+                                if (isAdmin) return;
+                                const current = field.value ?? [];
+                                field.onChange(
+                                  isChecked
+                                    ? current.filter((v) => v !== mod.id)
+                                    : [...current, mod.id]
+                                );
+                              }}
+                              className={cn(
+                                'flex items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-150 min-h-[52px] active:scale-[0.97]',
+                                isChecked
+                                  ? 'border-primary/40 bg-primary/5 shadow-sm'
+                                  : 'border-slate-200 bg-white hover:bg-slate-50',
+                                (isSubmitting || isAdmin) && 'opacity-60 cursor-not-allowed'
+                              )}
+                            >
+                              <div className={cn('shrink-0 h-5 w-5', isChecked ? mod.color : 'text-muted-foreground')}>
+                                <Icon className="h-5 w-5" />
+                              </div>
+                              <span className={cn(
+                                'text-xs font-medium leading-tight flex-1',
+                                isChecked ? 'text-slate-800' : 'text-slate-600'
+                              )}>
+                                {mod.label}
+                              </span>
+                              {isChecked && (
+                                <CheckCircle2 className="shrink-0 h-4 w-4 text-primary" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   />
                 </div>
 
-                <div className="space-y-4 pt-2">
-                  <div className="flex flex-col gap-1">
-                    <FormLabel className="text-base font-bold">Módulos Permitidos</FormLabel>
-                    <FormDescription className="text-xs">Acceso por módulo.</FormDescription>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      { id: 'caja', label: 'Caja y Finanzas', icon: Wallet },
-                      { id: 'inventory', label: 'Inventario de Materiales', icon: Package },
-                      { id: 'projects', label: 'Gestor de Proyectos', icon: FolderKanban },
-                      { id: 'calculator', label: 'Calculadora de Cortes', icon: Calculator },
-                      { id: 'precios-descuentos', label: 'Precios & Descuentos', icon: Tag },
-                      { id: 'admin', label: 'Panel de Control (Admin)', icon: ShieldCheck },
-                      { id: 'procesos', label: 'Procesos de Empresa', icon: Network },
-                    ].map((mod) => (
-                      <FormField
-                        key={mod.id}
-                        control={form.control}
-                        name="permissions.allowedModules"
-                        render={({ field }) => {
-                          return (
-                            <FormItem
-                              key={mod.id}
-                              className="flex flex-row items-center space-x-3 space-y-0 p-2 border rounded-lg hover:bg-muted/50 transition-colors"
-                            >
-                              <FormControl>
-                                <Checkbox
-                                  checked={form.watch('permissions.canManageUsers') || field.value?.includes(mod.id)}
-                                  onCheckedChange={(checked) => {
-                                    return checked
-                                      ? field.onChange([...field.value, mod.id])
-                                      : field.onChange(
-                                        field.value?.filter(
-                                          (value: string) => value !== mod.id
-                                        )
-                                      )
-                                  }}
-                                  disabled={isSubmitting || form.watch('permissions.canManageUsers')}
-                                />
-                              </FormControl>
-                              <div className="flex items-center gap-2">
-                                <mod.icon className="h-4 w-4 text-muted-foreground" />
-                                <FormLabel className="text-xs font-medium cursor-pointer">
-                                  {mod.label}
-                                </FormLabel>
-                              </div>
-                            </FormItem>
-                          )
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
               </div>
             </ScrollArea>
+
+            {/* Footer fijo */}
+            <DialogFooter className="flex-shrink-0 px-5 py-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row gap-2">
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" className="h-11 sm:h-10 w-full sm:w-auto" disabled={isSubmitting}>
+                  Cancelar
+                </Button>
+              </DialogClose>
+              <Button
+                type="submit"
+                form="create-user-form"
+                className="h-11 sm:h-10 w-full sm:w-auto"
+                disabled={isSubmitting}
+              >
+                {isSubmitting && <Loader className="animate-spin mr-2 h-4 w-4" />}
+                Crear Usuario
+              </Button>
+            </DialogFooter>
           </form>
         </Form>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="secondary" disabled={isSubmitting}>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            type="submit"
-            form="create-user-form"
-            disabled={isSubmitting}
-          >
-            {isSubmitting && <Loader className="animate-spin mr-2" />}
-            Crear Usuario
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
